@@ -143,8 +143,18 @@ public sealed class Installer(ComponentStore store)
             var src = Path.Combine(pkg, dir);
             if (!Directory.Exists(src)) continue;
             var dest = Path.Combine(ctx.Target, dir);
-            MirrorDir(src, dest);
-            m.AddDir(ctx.Rel(dest));
+            var owned = m.Dirs.Contains(ctx.Rel(dest), StringComparer.OrdinalIgnoreCase);
+            if (owned || !Directory.Exists(dest))
+            {
+                MirrorDir(src, dest);
+                m.AddDir(ctx.Rel(dest));
+            }
+            else
+            {
+                // Folder predates us (e.g. an earlier manual install): track file by file so uninstall leaves it as it was.
+                foreach (var file in PackageFiles(src))
+                    Place(ctx, file, Path.Combine(dest, Path.GetRelativePath(src, file)));
+            }
         }
 
         var iniPath = Path.Combine(ctx.Target, "OptiScaler.ini");
@@ -157,11 +167,14 @@ public sealed class Installer(ComponentStore store)
     }
 
     /// <summary>Copies the package folder in place, skipping unchanged files and docs.</summary>
+    private static IEnumerable<string> PackageFiles(string src) =>
+        Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith(".md", StringComparison.OrdinalIgnoreCase));
+
     private static void MirrorDir(string src, string dest)
     {
-        foreach (var file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+        foreach (var file in PackageFiles(src))
         {
-            if (file.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) continue;
             var target = Path.Combine(dest, Path.GetRelativePath(src, file));
             if (FileUtil.SameFile(file, target)) continue;
             FileUtil.AtomicCopy(file, target);

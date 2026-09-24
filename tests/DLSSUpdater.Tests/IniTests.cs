@@ -48,14 +48,14 @@ public class IniTests
     }
 
     [Fact]
-    public void Merge_AppliesProfile_CarriesGameTweaks_KeepsNewKeys()
+    public void Merge_GameSettingsWin_ProfileFillsAuto_KeepsNewKeys()
     {
-        var current = "[Menu]\nShortcutKey=0x24\n[Upscalers]\nDx12Upscaler=xess\n[Old]\nGone=auto\n";
+        var current = "[Menu]\nShortcutKey=0x24\n[Upscalers]\nDx12Upscaler=xess\n[Plugins]\nLoadReshade=auto\n[Old]\nGone=auto\n";
         var merged = IniFile.Parse(ConfigProfile.Merge(Release, current, ConfigProfile.Defaults(), carryOver: true));
 
-        Assert.Equal("0x2e", merged.Get("Menu", "ShortcutKey"));      // profile beats game tweak
-        Assert.Equal("dlss", merged.Get("Upscalers", "Dx12Upscaler")); // profile
-        Assert.Equal("true", merged.Get("Plugins", "LoadReshade"));
+        Assert.Equal("0x24", merged.Get("Menu", "ShortcutKey"));       // existing game setting is kept
+        Assert.Equal("xess", merged.Get("Upscalers", "Dx12Upscaler"));
+        Assert.Equal("true", merged.Get("Plugins", "LoadReshade"));    // auto in the game -> profile applies
         Assert.Equal("auto", merged.Get("Menu", "NewInThisRelease"));  // new release key survives
         Assert.Null(merged.Get("Old", "Gone"));                        // auto values are not carried
         Assert.Equal("true", merged.Get("DlssNr", "Enabled"));

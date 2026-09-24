@@ -168,6 +168,51 @@ public class InstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_KeepsExistingIniSettings()
+    {
+        // Hand-made install: its ini has a different menu key and NR tuning.
+        Write(Path.Combine(_target, "OptiScaler.ini"), "[Menu]\nShortcutKey=0x24\n[DlssNr]\nLocalTone=0.100000\nEnabled=false\n");
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+
+        var ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
+        Assert.Equal("0x24", ini.Get("Menu", "ShortcutKey"));
+        Assert.Equal("0.100000", ini.Get("DlssNr", "LocalTone"));
+        Assert.Equal("false", ini.Get("DlssNr", "Enabled"));
+        Assert.Equal("true", ini.Get("Plugins", "LoadReshade"));  // was not set -> profile
+        Assert.Equal("0xdc", ini.Get("DlssNr", "ToggleKey"));
+
+        // Settings changed in the OptiScaler overlay survive the next release.
+        ini.Set("DlssNr", "Passes", "2");
+        ini.Save(Path.Combine(_target, "OptiScaler.ini"));
+        SeedOpti("v10.0.0", "OPTI-2");
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
+        Assert.Equal("2", ini.Get("DlssNr", "Passes"));
+        Assert.Equal("0x24", ini.Get("Menu", "ShortcutKey"));
+
+        // Uninstall brings back the hand-made ini untouched.
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal("[Menu]\nShortcutKey=0x24\n[DlssNr]\nLocalTone=0.100000\nEnabled=false\n", T("OptiScaler.ini"));
+    }
+
+    [Fact]
+    public async Task PreexistingPackageFolder_IsLeftAsItWas()
+    {
+        Write(Path.Combine(_target, @"Licenses\XeSS_LICENSE.txt"), "old-lic");
+        Write(Path.Combine(_target, @"Licenses\Other.txt"), "keep");
+        var before = Snapshot();
+        var installer = new Installer(_store);
+
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("lic", T(@"Licenses\XeSS_LICENSE.txt"));
+        Assert.DoesNotContain(@"Game\Binaries\Win64\Licenses", InstallManifest.Load(_target)!.Dirs);
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
     public async Task AddsSrWhenGameHasNone()
     {
         File.Delete(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"));

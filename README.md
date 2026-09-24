@@ -14,7 +14,7 @@ and installs them next to each game's executable, together with your own `nvngx_
 
 1. Finds the real game exe (Unreal `*-Win64-Shipping.exe`, Unity players, etc.; you can pick another folder).
 2. Copies `OptiScaler.dll` as the chosen proxy (`dxgi.dll` by default) plus its `OptiScaler\` backend folder.
-3. Builds `OptiScaler.ini` from the release ini, keeps the game's own non-default values, then applies your overrides (default: ReShade loading on, overlay on **Del**, DLSS preset override, DLSSNR settings).
+3. Builds `OptiScaler.ini` from the release ini plus your overrides (default: ReShade loading on, overlay on **Del**, DLSS preset override, DLSSNR settings). Any value the game's existing `OptiScaler.ini` already sets is kept, so updates never undo per-game tuning.
 4. Places `ReShade64.dll`, `renodx-mfgunlock.addon64` and `nvngx_dlssnr.dll` beside it.
 5. Replaces every older `nvngx_dlss*.dll` in the game with the latest NVIDIA build.
 6. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.

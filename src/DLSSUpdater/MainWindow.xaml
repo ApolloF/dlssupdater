@@ -447,7 +447,7 @@
                                 <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
                                 <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
                                 <CheckBox Content="Add nvngx_dlss.dll to games that ship without it" IsChecked="{Binding AddMissingDlss}" Margin="0,8" />
-                                <CheckBox Content="Keep each game's own OptiScaler.ini changes when updating" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
+                                <CheckBox Content="Keep settings from a game's existing OptiScaler.ini (they win over the overrides below)" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
                             </StackPanel>
                         </Border>
 
@@ -499,7 +499,7 @@
                             </StackPanel>
                         </Border>
                         <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Text="Applied on top of each release's OptiScaler.ini on every install and update. 0x2e = Delete key for the overlay menu." />
+                                   Text="Applied on top of each release's OptiScaler.ini. Values a game's existing ini already sets are kept. 0x2e = Delete key for the overlay menu." />
 
                         <TextBlock Text="GAME FOLDERS" Style="{StaticResource SectionTitle}" />
                         <Border Style="{StaticResource Card}" Padding="16,6">

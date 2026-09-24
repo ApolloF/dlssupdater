@@ -35,11 +35,18 @@ public static class ConfigProfile
 
     /// <summary>
     /// Builds the ini for a game: the release ini is the base (so new keys and comments arrive),
-    /// then non-auto values from the game's current ini are carried over, then the profile is applied.
+    /// the profile is applied on top, then every non-auto value from the game's current ini wins,
+    /// so an update never changes settings the game already had.
     /// </summary>
     public static string Merge(string releaseIni, string? currentIni, IEnumerable<IniOverride> overrides, bool carryOver)
     {
         var ini = IniFile.Parse(releaseIni);
+
+        foreach (var o in overrides)
+        {
+            if (string.IsNullOrWhiteSpace(o.Section) || string.IsNullOrWhiteSpace(o.Key)) continue;
+            ini.Set(o.Section.Trim(), o.Key.Trim(), o.Value.Trim());
+        }
 
         if (carryOver && currentIni is not null)
         {
@@ -48,12 +55,6 @@ public static class ConfigProfile
                 if (section.Length == 0 || value.Equals("auto", StringComparison.OrdinalIgnoreCase)) continue;
                 ini.Set(section, key, value);
             }
-        }
-
-        foreach (var o in overrides)
-        {
-            if (string.IsNullOrWhiteSpace(o.Section) || string.IsNullOrWhiteSpace(o.Key)) continue;
-            ini.Set(o.Section.Trim(), o.Key.Trim(), o.Value.Trim());
         }
 
         return ini.ToString();

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DLSSUpdater.Core;
 
@@ -66,6 +67,7 @@ public sealed class InstallManifest
         FileUtil.AtomicWriteText(PathFor(targetDir), JsonSerializer.Serialize(this, JsonCtx.Default.InstallManifest));
     }
 
+    [JsonIgnore]
     public bool IsEmpty => Files.Count == 0 && Dirs.Count == 0 && Backups.Count == 0;
 
     public bool Owns(string rel) => Files.Contains(rel, StringComparer.OrdinalIgnoreCase);

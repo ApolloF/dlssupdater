@@ -166,7 +166,7 @@ public sealed partial class GameViewModel : ObservableObject
     {
         _loading = true;
         Manifest = SelectedTarget is null ? null : InstallManifest.Load(SelectedTarget.Dir);
-        Proxy = Manifest?.Proxy ?? _s.Settings.Games.GetValueOrDefault(Id)?.Proxy ?? _s.Settings.DefaultProxy;
+        Proxy = Manifest?.Proxy ?? _s.Settings.Games.GetValueOrDefault(Id)?.Proxy ?? ExistingOptiProxy() ?? _s.Settings.DefaultProxy;
 
         var m = Manifest;
         Set("opti", m?.Opti ?? true);
@@ -179,6 +179,10 @@ public sealed partial class GameViewModel : ObservableObject
 
         void Set(string key, bool on) => Components.First(c => c.Key == key).Enabled = on;
     }
+
+    /// <summary>A manual OptiScaler install keeps its proxy name so the update replaces the file the game loads.</summary>
+    private string? ExistingOptiProxy() => SelectedTarget is null ? null
+        : AppSettings.ProxyNames.FirstOrDefault(n => File.Exists(Path.Combine(SelectedTarget.Dir, n)) && Installer.IsOptiScaler(Path.Combine(SelectedTarget.Dir, n)));
 
     /// <summary>Recomputes installed-vs-latest for every component and DLSS file.</summary>
     public void RefreshStatus()
