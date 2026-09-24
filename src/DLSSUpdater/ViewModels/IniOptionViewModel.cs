@@ -30,6 +30,16 @@ public sealed partial class IniOptionViewModel : ObservableObject
     public static IniOptionViewModel Toggle(string label, string hint, string section, string key, string on, ObservableCollection<IniOverride> list) =>
         new(label, hint, section, key, list, new OptionChoice("Off", null), new OptionChoice("On", on));
 
+    /// <summary>HelpTopics id behind the ⓘ button.</summary>
+    public string? Topic { get; private set; }
+    public string Tip => HelpTopics.Tip(Topic);
+
+    public IniOptionViewModel About(string topic)
+    {
+        Topic = topic;
+        return this;
+    }
+
     public string Label { get; }
     public string Hint { get; }
     public string Section { get; }

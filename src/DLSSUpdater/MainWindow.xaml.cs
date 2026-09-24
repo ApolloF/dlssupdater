@@ -1,4 +1,4 @@
-using System.Collections.Specialized;
+﻿using System.Collections.Specialized;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -25,6 +25,11 @@ public partial class MainWindow : Window
         };
         StateChanged += (_, _) => UpdateMaximized();
         PreviewKeyDown += OnPreviewKeyDown;
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.HelpTarget) && _vm.HelpTarget is { } id)
+                Dispatcher.BeginInvoke(() => ScrollToGuide(id), System.Windows.Threading.DispatcherPriority.Loaded);
+        };
         SourceInitialized += (_, _) => RoundCorners();
         ((INotifyCollectionChanged)_vm.LogLines).CollectionChanged += (_, _) =>
         {
@@ -45,11 +50,26 @@ public partial class MainWindow : Window
             mods.HasFlag(System.Windows.Input.ModifierKeys.Alt));
     }
 
+    /// <summary>Scrolls the About page to a guide entry and marks it with the accent bar.</summary>
+    private void ScrollToGuide(string id)
+    {
+        GuideList.UpdateLayout();
+        foreach (var topic in HelpTopics.All)
+        {
+            if (GuideList.ItemContainerGenerator.ContainerFromItem(topic) is not FrameworkElement c) continue;
+            var border = VisualTreeHelper.GetChildrenCount(c) > 0 ? VisualTreeHelper.GetChild(c, 0) as System.Windows.Controls.Border : null;
+            if (border is not null)
+                border.BorderBrush = topic.Id == id ? (Brush)FindResource("Accent") : Brushes.Transparent;
+            if (topic.Id == id && AboutScroll.Content is UIElement content)
+                AboutScroll.ScrollToVerticalOffset(Math.Max(0, c.TranslatePoint(new Point(0, 0), content).Y - 24));
+        }
+    }
+
     private void UpdateMaximized()
     {
         // A chrome-less maximized window overhangs the screen by the resize border.
         RootGrid.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
-        MaxButton.Content = WindowState == WindowState.Maximized ? "" : "";
+        MaxButton.Content = WindowState == WindowState.Maximized ? "î¤£" : "î¤¢";
     }
 
     private void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -68,6 +88,7 @@ public partial class MainWindow : Window
             if (step == "settings") _vm.SettingsOpen = true;
             else if (step.StartsWith("tab:")) _vm.SettingsVm.Tab = step[4..];
             else if (step == "about") _vm.AboutOpen = true;
+            else if (step.StartsWith("help:")) _vm.ShowHelpCommand.Execute(step[5..]);
             else if (step == "log") _vm.LogOpen = true;
             else if (step.StartsWith("game:") && int.TryParse(step[5..], out var i))
                 _vm.SelectedGame = _vm.GamesView.Cast<GameViewModel>().ElementAtOrDefault(i);

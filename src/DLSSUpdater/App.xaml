@@ -14,6 +14,7 @@
             <v:StateToBrush x:Key="StateToBrush" />
             <v:EqualsToBool x:Key="EqualsToBool" />
             <v:EqualsToVisibility x:Key="EqualsToVis" />
+            <v:HelpTip x:Key="HelpTip" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

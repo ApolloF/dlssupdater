@@ -44,6 +44,15 @@ public sealed class StateToBrush : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
+/// <summary>HelpTopics id -> tooltip text (plus a hint that the ⓘ opens the guide).</summary>
+public sealed class HelpTip : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        HelpTopics.Tip(value as string) + "\n\nClick for the guide.";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
 /// <summary>Visible when the bound string equals ConverterParameter.</summary>
 public sealed class EqualsToVisibility : IValueConverter
 {

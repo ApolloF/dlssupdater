@@ -24,28 +24,28 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         ReShadeOptions =
         [
-            IniOptionViewModel.Toggle("Skip the tutorial", "Start without ReShade's first-run guide.", "OVERLAY", "TutorialProgress", "4", ReShadeOverrides),
-            IniOptionViewModel.Toggle("Performance mode", "Compile effects without UI variables for more FPS; tweaking needs it off.", "GENERAL", "PerformanceMode", "1", ReShadeOverrides),
-            IniOptionViewModel.Toggle("Show FPS", "ReShade's own FPS counter.", "OVERLAY", "ShowFPS", "1", ReShadeOverrides),
+            IniOptionViewModel.Toggle("Skip the tutorial", "Start without ReShade's first-run guide.", "OVERLAY", "TutorialProgress", "4", ReShadeOverrides).About("skip-tutorial"),
+            IniOptionViewModel.Toggle("Performance mode", "Compile effects without UI variables for more FPS; tweaking needs it off.", "GENERAL", "PerformanceMode", "1", ReShadeOverrides).About("performance-mode"),
+            IniOptionViewModel.Toggle("Show FPS", "ReShade's own FPS counter.", "OVERLAY", "ShowFPS", "1", ReShadeOverrides).About("show-fps"),
             IniOptionViewModel.Toggle("Load MFG Unlock early", "Needed by games that start Streamline before ReShade loads add-ons (e.g. Cyberpunk).",
-                "ADDON", "LoadFromDllMain", ComponentStore.MfgFile, ReShadeOverrides),
+                "ADDON", "LoadFromDllMain", ComponentStore.MfgFile, ReShadeOverrides).About("load-early"),
         ];
 
         MfgOptions =
         [
             new IniOptionViewModel("Force frame multiplier", "Only for games with just an FG on/off switch.", "RenoDX.MFGUnlock", "ForceMultiplier", ReShadeOverrides,
-                new("Game setting", null), new("2x", "2"), new("3x", "3"), new("4x", "4"), new("5x", "5"), new("6x", "6")),
+                new("Game setting", null), new("2x", "2"), new("3x", "3"), new("4x", "4"), new("5x", "5"), new("6x", "6")).About("force-multiplier"),
             new IniOptionViewModel("Max frame count", "Highest multiplier reported to the game.", "RenoDX.MFGUnlock", "MaxCount", ReShadeOverrides,
-                new("Default (4)", null), new("3", "3"), new("4", "4"), new("5", "5"), new("6", "6")),
+                new("Default (4)", null), new("3", "3"), new("4", "4"), new("5", "5"), new("6", "6")).About("max-count"),
             IniOptionViewModel.Toggle("Dynamic MFG", "Needs DLSS 310.9.1 FG + the matching Streamline set. Overrides the forced multiplier.",
-                "RenoDX.MFGUnlock", "DynamicMFG", "1", ReShadeOverrides),
+                "RenoDX.MFGUnlock", "DynamicMFG", "1", ReShadeOverrides).About("dynamic-mfg"),
             new IniOptionViewModel("Dynamic target FPS", "0 follows the display refresh rate.", "RenoDX.MFGUnlock", "DynamicTargetFPS", ReShadeOverrides,
-                new("Refresh rate", null), new("60", "60"), new("90", "90"), new("120", "120"), new("144", "144"), new("165", "165"), new("240", "240")),
+                new("Refresh rate", null), new("60", "60"), new("90", "90"), new("120", "120"), new("144", "144"), new("165", "165"), new("240", "240")).About("dynamic-target"),
             new IniOptionViewModel("Runtime selection", "Prefer local files stops NVIDIA's OTA DLLs from overriding the ones installed here.",
                 "RenoDX.MFGUnlock", "RuntimeSelectionMode", ReShadeOverrides,
-                new("Game default", null), new("Prefer local files", "1"), new("Force NVIDIA OTA", "2")),
+                new("Game default", null), new("Prefer local files", "1"), new("Force NVIDIA OTA", "2")).About("runtime-selection"),
             new IniOptionViewModel("HDR compatibility", "Try UI Composition if HDR games show broken UI with FG.", "RenoDX.MFGUnlock", "HDRCompatibilityMode", ReShadeOverrides,
-                new("Native", null), new("UI Composition", "1"), new("Auto guard + UI", "2"), new("Final color fallback", "3")),
+                new("Native", null), new("UI Composition", "1"), new("Auto guard + UI", "2"), new("Final color fallback", "3")).About("hdr-compat"),
         ];
 
         Reload();

@@ -69,7 +69,11 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Margin="0,0,24,0">
-                    <TextBlock Text="{Binding Label}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                        <Button Style="{StaticResource InfoBtn}" CommandParameter="{Binding Topic}"
+                                ToolTip="{Binding Topic, Converter={StaticResource HelpTip}}" />
+                    </StackPanel>
                     <TextBlock Text="{Binding Hint}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
                 </StackPanel>
                 <CheckBox Grid.Column="1" IsChecked="{Binding IsOn}" VerticalAlignment="Center"
@@ -510,7 +514,11 @@
 
                             <!-- ===== General ===== -->
                             <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=General}">
-                                <TextBlock Text="LOCAL COMPONENTS" Style="{StaticResource SectionTitle}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="LOCAL COMPONENTS" Style="{StaticResource SectionTitle}" />
+                                    <Button Style="{StaticResource InfoBtn}" CommandParameter="local-components" Margin="4,18,0,0"
+                                            ToolTip="{Binding Source=local-components, Converter={StaticResource HelpTip}}" />
+                                </StackPanel>
                                 <Border Style="{StaticResource Card}" Padding="16,4">
                                     <StackPanel>
                                         <Grid Margin="0,10">
@@ -543,30 +551,60 @@
                                 <Border Style="{StaticResource Card}" Padding="16,6">
                                     <StackPanel>
                                         <Grid Margin="0,8">
-                                            <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="proxy"
+                                                    ToolTip="{Binding Source=proxy, Converter={StaticResource HelpTip}}" />
+                                            </StackPanel>
                                             <ComboBox Width="170" HorizontalAlignment="Right" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding DefaultProxy}" />
                                         </Grid>
                                         <Grid Margin="0,8">
                                             <StackPanel>
-                                                <TextBlock Text="DLSS version" VerticalAlignment="Center" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="DLSS version" VerticalAlignment="Center" />
+                                                    <Button Style="{StaticResource InfoBtn}" CommandParameter="dlss-version"
+                                                    ToolTip="{Binding Source=dlss-version, Converter={StaticResource HelpTip}}" />
+                                                </StackPanel>
                                                 <TextBlock Text="A pinned version is installed exactly, also downgrading. Games can pin their own." Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,2,0,0" />
                                             </StackPanel>
                                             <ComboBox Width="170" HorizontalAlignment="Right" VerticalAlignment="Center" MaxDropDownHeight="360"
                                                       ItemsSource="{Binding DlssChoices}" SelectedItem="{Binding SelectedDlss}" />
                                         </Grid>
-                                        <CheckBox Content="Include prereleases" IsChecked="{Binding IncludePrereleases}" Margin="0,8" />
+                                        <CheckBox IsChecked="{Binding IncludePrereleases}" Margin="0,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Include prereleases" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="prereleases"
+                                                    ToolTip="{Binding Source=prereleases, Converter={StaticResource HelpTip}}" />
+                                            </StackPanel>
+                                        </CheckBox>
                                         <CheckBox Content="Install ReShade" IsChecked="{Binding InstallReShade}" Margin="0,8" />
                                         <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
                                         <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
                                         <CheckBox IsChecked="{Binding InstallStreamline}" Margin="0,8">
                                             <StackPanel>
-                                                <TextBlock Text="Replace the game's Streamline files with the latest SDK" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Replace the game's Streamline files with the latest SDK" VerticalAlignment="Center" />
+                                                    <Button Style="{StaticResource InfoBtn}" CommandParameter="streamline"
+                                                    ToolTip="{Binding Source=streamline, Converter={StaticResource HelpTip}}" />
+                                                </StackPanel>
                                                 <TextBlock Text="For Dynamic MFG (needs DLSS FG 310.9.1 + Streamline 2.14.1). Only files the game already ships are swapped, always as one set."
                                                            Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
                                             </StackPanel>
                                         </CheckBox>
-                                        <CheckBox Content="Add nvngx_dlss.dll to games that ship without it" IsChecked="{Binding AddMissingDlss}" Margin="0,8" />
-                                        <CheckBox Content="Keep settings from a game's existing OptiScaler.ini / ReShade.ini" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
+                                        <CheckBox IsChecked="{Binding AddMissingDlss}" Margin="0,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Add nvngx_dlss.dll to games that ship without it" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="add-missing"
+                                                    ToolTip="{Binding Source=add-missing, Converter={StaticResource HelpTip}}" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <CheckBox IsChecked="{Binding CarryOverGameIni}" Margin="0,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Keep settings from a game's existing OptiScaler.ini / ReShade.ini" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="keep-settings"
+                                                    ToolTip="{Binding Source=keep-settings, Converter={StaticResource HelpTip}}" />
+                                            </StackPanel>
+                                        </CheckBox>
                                     </StackPanel>
                                 </Border>
 
@@ -613,7 +651,11 @@
 
                             <!-- ===== Keybinds ===== -->
                             <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Keybinds}">
-                                <TextBlock Text="OPTISCALER" Style="{StaticResource SectionTitle}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="OPTISCALER" Style="{StaticResource SectionTitle}" />
+                                    <Button Style="{StaticResource InfoBtn}" CommandParameter="keybinds" Margin="4,18,0,0"
+                                            ToolTip="{Binding Source=keybinds, Converter={StaticResource HelpTip}}" />
+                                </StackPanel>
                                 <Border Style="{StaticResource Card}" Padding="16,4">
                                     <ItemsControl ItemsSource="{Binding OptiKeybinds}" ItemTemplate="{StaticResource KeybindRow}" />
                                 </Border>
@@ -679,7 +721,7 @@
 
             <!-- About overlay -->
             <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding AboutOpen, Converter={StaticResource BoolToVis}}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="AboutScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="36,28,36,36" MaxWidth="760" HorizontalAlignment="Left">
                         <Grid>
                             <StackPanel Orientation="Horizontal">
@@ -697,6 +739,24 @@
                             <Run Foreground="{StaticResource Text}">Uninstall / Restore DLSS</Run> put back the originals kept in .dlssupdater\backup.<LineBreak />
                             Settings a game already has in OptiScaler.ini or ReShade.ini are kept on update.
                         </TextBlock>
+
+                        <TextBlock Text="GUIDE" Style="{StaticResource SectionTitle}" />
+                        <ItemsControl x:Name="GuideList" ItemsSource="{Binding Guide}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:HelpTopic}">
+                                    <Border BorderThickness="2,0,0,0" BorderBrush="Transparent" Padding="14,10,0,10" Margin="0,0,0,2">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Group}" Style="{StaticResource Caps}" Foreground="{StaticResource Dim}"
+                                                           VerticalAlignment="Center" Margin="10,1,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Body}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
                         <TextBlock Text="PROJECTS" Style="{StaticResource SectionTitle}" />
                         <Border Style="{StaticResource Card}" Padding="16,4">

@@ -61,6 +61,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _logOpen;
     [ObservableProperty] private bool _aboutOpen;
     [ObservableProperty] private string _streamlineVersion = "—";
+    /// <summary>Guide entry to scroll to when the About page opens from an ⓘ button.</summary>
+    [ObservableProperty] private string? _helpTarget;
+
+    public IReadOnlyList<HelpTopic> Guide => HelpTopics.All;
 
     public string AppVersion => "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
     [ObservableProperty]
@@ -105,6 +109,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnAboutOpenChanged(bool value)
     {
+        if (!value) HelpTarget = null;
         if (value && SettingsOpen) SettingsOpen = false;
     }
     partial void OnFilterChanged(string value) => GamesView.Refresh();
@@ -285,6 +290,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleAbout() => AboutOpen = !AboutOpen;
+
+    [RelayCommand]
+    private void ShowHelp(string topic)
+    {
+        AboutOpen = true;
+        HelpTarget = null;
+        HelpTarget = topic;
+    }
 
     [RelayCommand]
     private static void OpenUrl(string url)
