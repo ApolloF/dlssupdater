@@ -51,6 +51,8 @@ public sealed class NvDrs : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int GetProfileInfoFn(IntPtr session, IntPtr profile, IntPtr info);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int GetSettingFn(IntPtr session, IntPtr profile, uint id, IntPtr setting);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetSettingFn(IntPtr session, IntPtr profile, IntPtr setting);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int GetSettingExFn(IntPtr session, IntPtr profile, uint id, IntPtr setting, ref uint reserved);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetSettingExFn(IntPtr session, IntPtr profile, IntPtr setting, uint reserved1, uint reserved2);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DeleteSettingFn(IntPtr session, IntPtr profile, uint id);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ErrorMessageFn(int status, IntPtr buffer);
 
@@ -220,24 +222,44 @@ public sealed class NvDrs : IDisposable
         return profile;
     }
 
-    /// <summary>The value set in this profile by the user or an app, or null when it only has the driver default.</summary>
-    public uint? Get(IntPtr profile, uint id)
+/// <summary>A setting as the driver reports it for one profile.</summary>
+    /// <param name="Predefined">The value is NVIDIA's shipped default for this profile, not a user value.</param>
+    /// <param name="Location">0 = this profile, 1 = inherited from the global profile, 2 = base, 3 = driver default.</param>
+    public readonly record struct Setting(uint Value, bool Predefined, int Location)
+    {
+        public bool IsUserValue => Location == 0 && !Predefined;
+    }
+
+    // Like NVIDIA Profile Inspector, get / set / delete go through nvapi's extended entry points first: the public ones
+    // silently ignore hidden settings (Smooth Motion, RTX HDR, ...). The public ids are the fallback on drivers without them.
+    private static IntPtr Ext(uint id) => _qi!(id);
+
+    /// <summary>The setting as seen from this profile, or null when neither the profile nor the driver defines it.</summary>
+    public Setting? Read(IntPtr profile, uint id)
     {
         var s = Marshal.AllocHGlobal(SettingSize);
         try
         {
             Clear(s, SettingSize);
             Marshal.WriteInt32(s, 0, (int)SettingVer);
-            var status = Fn<GetSettingFn>(0x73BF8338)(_session, profile, id, s);
+            int status;
+            if (Ext(0xEA99498D) is var ext && ext != IntPtr.Zero)
+            {
+                uint reserved = 0;
+                status = Marshal.GetDelegateForFunctionPointer<GetSettingExFn>(ext)(_session, profile, id, s, ref reserved);
+            }
+            else status = Fn<GetSettingFn>(0x73BF8338)(_session, profile, id, s);
             if (status == SettingNotFound) return null;
-            Check(status, "GetSetting");
-            var location = Marshal.ReadInt32(s, OffLocation);
-            var predefined = Marshal.ReadInt32(s, OffIsCurrentPredefined);
-            if (location != 0 || predefined != 0) return null; // inherited or the driver's own default
-            return (uint)Marshal.ReadInt32(s, OffCurrentValue);
+            Check(status, $"GetSetting 0x{id:X8}");
+            return new Setting((uint)Marshal.ReadInt32(s, OffCurrentValue),
+                Marshal.ReadInt32(s, OffIsCurrentPredefined) != 0,
+                Marshal.ReadInt32(s, OffLocation));
         }
         finally { Marshal.FreeHGlobal(s); }
     }
+
+    /// <summary>The value set in this profile by the user or an app, or null when it only has the driver default.</summary>
+    public uint? Get(IntPtr profile, uint id) => Read(profile, id) is { IsUserValue: true } s ? s.Value : null;
 
     public void Set(IntPtr profile, uint id, uint value)
     {
@@ -250,15 +272,20 @@ public sealed class NvDrs : IDisposable
             Marshal.WriteInt32(s, OffType, 0);     // NVDRS_DWORD_TYPE
             Marshal.WriteInt32(s, OffLocation, 0); // NVDRS_CURRENT_PROFILE_LOCATION
             Marshal.WriteInt32(s, OffCurrentValue, (int)value);
-            Check(Fn<SetSettingFn>(0x577DD202)(_session, profile, s), $"SetSetting 0x{id:X8}");
+            var status = Ext(0x8A2CF5F5) is var ext && ext != IntPtr.Zero
+                ? Marshal.GetDelegateForFunctionPointer<SetSettingExFn>(ext)(_session, profile, s, 0, 0)
+                : Fn<SetSettingFn>(0x577DD202)(_session, profile, s);
+            Check(status, $"SetSetting 0x{id:X8}");
         }
         finally { Marshal.FreeHGlobal(s); }
     }
 
-    /// <summary>Removes the user value so the driver default applies again.</summary>
+    /// <summary>Removes this profile's own value so the global / NVIDIA default applies again.</summary>
     public void Delete(IntPtr profile, uint id)
     {
-        var status = Fn<DeleteSettingFn>(0xE4A26362)(_session, profile, id);
+        var status = Ext(0xD20D29DF) is var ext && ext != IntPtr.Zero
+            ? Marshal.GetDelegateForFunctionPointer<DeleteSettingFn>(ext)(_session, profile, id)
+            : Fn<DeleteSettingFn>(0xE4A26362)(_session, profile, id);
         if (status is not (Ok or SettingNotFound)) Check(status, $"DeleteProfileSetting 0x{id:X8}");
     }
 

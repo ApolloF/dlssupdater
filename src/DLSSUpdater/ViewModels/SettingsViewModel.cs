@@ -59,13 +59,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string _tab = "General";
 
-    /// <summary>Global NVIDIA driver profile; loaded the first time the NVIDIA tab opens.</summary>
-    public DriverProfileViewModel Driver { get; } = new();
-
-    partial void OnTabChanged(string value)
-    {
-        if (value == "Nvidia" && !Driver.Loaded && !Driver.Busy) Driver.LoadCommand.Execute(null);
-    }
     [ObservableProperty] private string? _selectedPreset;
 
     public ObservableCollection<string> PresetNames { get; } = [];

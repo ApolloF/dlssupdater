@@ -436,7 +436,7 @@
                         <TextBlock Text="No executable found for this game, so there is no driver profile to match." Style="{StaticResource MutedText}"
                                    Visibility="{Binding DriverExe, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
                         <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Text="Written to this game's NVIDIA driver profile (matched on its exe). 'Use global' falls back to Settings → NVIDIA." />
+                                   Text="Written only to this game's NVIDIA driver profile (matched on its exe); the global profile is never changed. 'Use global' shows the global value in brackets." />
                     </StackPanel>
 
                     <StackPanel Visibility="{Binding DetailTab, Converter={StaticResource EqualsToVis}, ConverterParameter=Install}">
@@ -604,8 +604,6 @@
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=ReShade}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="DLSSNR &amp; HDR" GroupName="st" Margin="0,0,24,0"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nr}" />
-                                <RadioButton Style="{StaticResource Segment}" Content="NVIDIA" GroupName="st" Margin="0,0,24,0"
-                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nvidia}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="Advanced" GroupName="st"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Advanced}" />
                             </StackPanel>
@@ -804,14 +802,6 @@
                                            Text="Written to OptiScaler.ini. Tone mapping only applies to games that render in linear light (most HDR games); frames the game already tone-mapped pass through untouched. Everything can also be changed live in the OptiScaler menu." />
                             </StackPanel>
 
-                            <!-- ===== NVIDIA (global driver profile) ===== -->
-                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Nvidia}">
-                                <TextBlock Text="GLOBAL DRIVER PROFILE" Style="{StaticResource SectionTitle}" />
-                                <ContentPresenter Content="{Binding Driver}" ContentTemplate="{StaticResource DriverPanel}" />
-                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Text="The same driver settings the NVIDIA App and Profile Inspector edit. Per-game values are under each game's NVIDIA profile tab and win over these." />
-                            </StackPanel>
-
                             <!-- ===== Advanced ===== -->
                             <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Advanced}">
                                 <Grid>
@@ -853,12 +843,22 @@
             <!-- About overlay -->
             <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding AboutOpen, Converter={StaticResource BoolToVis}}">
                 <DockPanel>
-                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="26,8"
-                        Visibility="{Binding CanGoBack, Converter={StaticResource BoolToVis}}">
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="26,8">
                     <Button Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Command="{Binding BackCommand}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE72B;" Style="{StaticResource Icon}" Margin="0,0,8,0" />
-                            <TextBlock Text="Back to settings" />
+                            <TextBlock>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Back" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CanGoBack}" Value="True">
+                                                <Setter Property="Text" Value="Back to settings" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </Button>
                 </Border>

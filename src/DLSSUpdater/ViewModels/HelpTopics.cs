@@ -113,15 +113,15 @@ public static class HelpTopics
 
         // ---------- NVIDIA driver ----------
         new("nv-sr-preset", "NVIDIA", "DLSS Super Resolution preset",
-            "Tells the driver which DLSS SR model preset to use, whatever the game asks for (like the NVIDIA App's DLSS Override - Model Presets). " +
-            "The DLSS override switch is turned on with it, as the NVIDIA App does. Works with the game's own nvngx_dlss.dll too. " +
+            "Tells the driver which DLSS SR model preset to use for this game, whatever the game asks for (like the NVIDIA App's DLSS Override - Model Presets). " +
+            "The preset and the SR override switch are written together, as the NVIDIA App stores them; Off writes both as off; Use global removes both. " +
             "OptiScaler has its own preset override (RenderPresetOverride in the profile); if both are set, OptiScaler's wins in games it handles."),
         new("nv-sr-mode", "NVIDIA", "DLSS render resolution",
             "Forces the internal render resolution DLSS upscales from, independent of the game's quality menu. Custom uses an exact percentage per axis."),
         new("nv-rr-preset", "NVIDIA", "DLSS Ray Reconstruction preset",
             "Model preset for Ray Reconstruction (the DLSS denoiser in path-traced games). Only matters in games that use RR."),
         new("nv-fg-preset", "NVIDIA", "DLSS Frame Generation preset",
-            "Which DLSS FG model the driver loads. Letters are driver-defined and change between releases; Latest is the safe choice."),
+            "Which DLSS FG model the driver loads, together with the FG override switch. NVIDIA default is what the NVIDIA App calls 'Default'; A and B are the presets drivers currently offer."),
         new("nv-mfg", "NVIDIA", "Multi frame generation",
             "Driver-side multiplier override for DLSS FG (the NVIDIA App's 'Multi Frame Generation' override). Native 3x/4x needs an RTX 50 card; " +
             "on RTX 40 use MFG Unlock instead."),
@@ -207,17 +207,17 @@ public static class HelpTopics
         ["tm-hdrtransfer"] = "Off unless you use Run before upscaling + Apply to finished picture in an HDR game and brightness looks wrong.",
         ["hdr-force"] = "Off. Only with an HDR mod that expects OptiScaler to make the swapchain HDR.",
         ["hdr-10"] = "Off (scRGB, more precision). On if your capture tool or display chain works better with HDR10.",
-        ["nv-sr-preset"] = "Latest for most games. K for Quality / DLAA, M for Performance, L for Ultra Performance. Set it per game only where the global choice looks worse.",
+        ["nv-sr-preset"] = "Use global for most games. Per game: K for Quality / DLAA, M for Performance, L for Ultra Performance, Off to stop any driver override there.",
         ["nv-sr-mode"] = "Use the game's setting. DLAA if you have headroom; Performance with an L/M preset at 4K looks close to Quality with older presets.",
         ["nv-rr-preset"] = "Latest. Try D/E if the newest preset shows smearing in a specific game.",
-        ["nv-fg-preset"] = "Latest, or Use global. Only change when a game shows FG artifacts that a different model fixes.",
+        ["nv-fg-preset"] = "Use global or NVIDIA default. Try A or B only when a game shows FG artifacts that a different model fixes.",
         ["nv-mfg"] = "Leave it to the game unless it only offers 2x; RTX 40 owners use MFG Unlock in the ReShade & MFG tab instead.",
-        ["nv-smooth-motion"] = "Per game, for titles without DLSS FG and a base frame rate above ~50 FPS. Keep global off.",
+        ["nv-smooth-motion"] = "Per game, for titles without DLSS FG and a base frame rate above ~50 FPS.",
         ["nv-rtx-hdr"] = "Per game for SDR-only titles on an HDR monitor. Off for games with native HDR or a RenoDX HDR mod.",
         ["nv-vibrance"] = "Taste. Per game for dull-looking SDR games; off when using RTX HDR.",
-        ["nv-fps"] = "Global: 3–4 FPS under your refresh (e.g. 141 for 144 Hz, 237 for 240 Hz) with G-Sync. Per game only for special cases.",
-        ["nv-vsync"] = "Global On with G-Sync, off in games. Off if you don't use VRR and want the lowest latency.",
-        ["nv-power"] = "Normal globally. Prefer max performance per game if one stutters when the GPU clocks down.",
+        ["nv-fps"] = "Use global (set a cap 3–4 FPS under your refresh in the NVIDIA App, e.g. 237 for 240 Hz). Per game for a lower cap, e.g. 117 for a game that can't hold 140+.",
+        ["nv-vsync"] = "Use global. Per game Off only where you want the lowest latency and accept tearing.",
+        ["nv-power"] = "Use global. Prefer max performance for a game that stutters when the GPU clocks down.",
         ["hdr-skip"] = "Off. On only if colours look wrong while another HDR mod is active.",
     };
 

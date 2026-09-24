@@ -24,32 +24,54 @@ public class FeatureTests
         Assert.Contains("ReversibleMode", r.Summary);
     }
 
+    private static Dictionary<uint, uint?> D(params (uint, uint)[] v) => v.ToDictionary(x => x.Item1, x => (uint?)x.Item2);
+
     [Fact]
-    public void NvOption_MatchesPrimaryIdsOnly()
+    public void NvOption_PresetBlock_AndGlobalLabel()
     {
-        var sr = NvSettings.Create(global: true).First(o => o.Topic == "nv-sr-preset");
-        sr.SetLoaded(new Dictionary<uint, uint?> { [0x10E41DF3] = 12 });   // L, override switch not read
-        Assert.Equal("L", sr.Selected!.Label);
+        var sr = NvSettings.Create().First(o => o.Topic == "nv-sr-preset");
+        var global = D((0x10E41DF3, 12), (0x10E41E01, 1));
+
+        sr.SetLoaded(D(), global, gameDefault: false);
+        Assert.Equal("Use global (L)", sr.Selected!.Label);
+        Assert.Null(sr.Selected.Value);
+
+        sr.SetLoaded(D((0x10E41DF3, 11), (0x10E41E01, 1)), global, false);
+        Assert.Equal("K", sr.Selected!.Label);
         Assert.False(sr.IsDirty);
 
-        sr.Selected = sr.Choices.First(c => c.Label == "K");
+        sr.SetLoaded(D((0x10E41DF3, 0), (0x10E41E01, 0)), global, false);   // what the NVIDIA App stores for "off"
+        Assert.Equal("Off", sr.Selected!.Label);
+
+        sr.Selected = sr.DisplayChoices.First(c => c.Label == "M");
         Assert.True(sr.IsDirty);
-        Assert.Contains((0x10E41DF3u, 11u), NvOptionViewModel.Pairs(sr.Selected.Value));
-        Assert.Contains((0x10E41E01u, 1u), NvOptionViewModel.Pairs(sr.Selected.Value)); // companion override switch
+        Assert.Equal([(0x10E41DF3u, 13u), (0x10E41E01u, 1u)], NvOptionViewModel.Pairs(sr.Selected!.Value).ToArray());
+
+        sr.Selected = null;   // ComboBox churn must not clear the selection
+        Assert.Equal("M", sr.Selected!.Label);
     }
 
     [Fact]
-    public void NvOption_CompositeAndCustom()
+    public void NvOption_FgPresets_AreOnlyRealOnes()
     {
-        var res = NvSettings.Create(global: false).First(o => o.Topic == "nv-sr-mode");
-        res.SetLoaded(new Dictionary<uint, uint?> { [0x10AFB768] = 6, [0x10E41DF5] = 0x4D });
+        var fg = NvSettings.Create().First(o => o.Topic == "nv-fg-preset");
+        Assert.Equal(["Use global", "Off", "NVIDIA default", "A", "B"], fg.Choices.Select(c => c.Label).ToArray());
+        fg.SetLoaded(D(), D((0x10E41DF1, 0xFFFFFE), (0x10E41E03, 1)), false);
+        Assert.Equal("Use global (NVIDIA default)", fg.Selected!.Label);
+    }
+
+    [Fact]
+    public void NvOption_CompositeCustomAndGameDefault()
+    {
+        var res = NvSettings.Create().First(o => o.Topic == "nv-sr-mode");
+        res.SetLoaded(D((0x10AFB768, 6), (0x10E41DF5, 77)), D((0x10AFB768, 3)), false);
         Assert.Equal("Custom 77%", res.Selected!.Label);
 
-        res.SetLoaded(new Dictionary<uint, uint?> { [0x10AFB768] = 6, [0x10E41DF5] = 0x5A });
+        res.SetLoaded(D((0x10AFB768, 6), (0x10E41DF5, 90)), D(), false);
         Assert.StartsWith("Custom (", res.Selected!.Label);
 
-        res.SetLoaded(new Dictionary<uint, uint?>());
-        Assert.Equal("Use global", res.Selected!.Label);
-        Assert.Null(res.Selected.Value);
+        var sm = NvSettings.Create().First(o => o.Topic == "nv-smooth-motion");
+        sm.SetLoaded(D(), D((0xB0D384C0, 1)), gameDefault: true);
+        Assert.Equal("Game default (On)", sm.Selected!.Label);
     }
 }

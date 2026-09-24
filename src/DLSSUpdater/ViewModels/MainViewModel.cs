@@ -77,7 +77,7 @@ public sealed partial class MainViewModel : ObservableObject
                                        && SettingsVm.AllOptions.First(o => o.Topic == t.Id) is { IsToggle: false } opt
             ? opt.Choices.Where(c => c.Description is not null && c.Value is not null).ToList()
             : t.Id == "ini-mode" ? SettingsOptions.IniModes.ToList()
-            : SettingsVm.Driver.Options.FirstOrDefault(o => o.Topic == t.Id) is { } nv ? nv.Choices.Where(c => c.Value is not null).ToList()
+            : NvSettings.Create().FirstOrDefault(o => o.Topic == t.Id) is { } nv ? nv.Choices.Where(c => c.Value is not null).ToList()
             : []))
         .ToList();
     private List<GuideEntry>? _guide;
@@ -313,9 +313,15 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAbout() => AboutOpen = !AboutOpen;
 
+    /// <summary>Leaves the About / guide page: back to the settings tab it was opened from, otherwise to the game view.</summary>
     [RelayCommand]
     private void Back()
     {
+        if (!CanGoBack)
+        {
+            AboutOpen = false;
+            return;
+        }
         SettingsOpen = true;
         ReturnedToSettings?.Invoke();
     }
