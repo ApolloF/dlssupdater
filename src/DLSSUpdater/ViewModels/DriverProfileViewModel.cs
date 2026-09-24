@@ -242,6 +242,7 @@ public static class NvSettings
     private const uint SrPreset = 0x10E41DF3, RrPreset = 0x10E41DF7, FgPreset = 0x10E41DF1;
     private const uint SrOverride = 0x10E41E01, RrOverride = 0x10E41E02, FgOverride = 0x10E41E03;
     private const uint SrMode = 0x10AFB768, SrRatio = 0x10E41DF5, MfgCount = 0x104D6667;
+    private const uint VsyncMode = 0x00A879CF, VsyncTear = 0x005A375C, TearOff = 0x96861077, TearOn = 0x99941284;
 
     private static OptionChoice C(string label, string? value, string description) => new(label, value, description);
     private static string W(uint id, uint value) => $"{id:X}={value:X}";
@@ -258,13 +259,11 @@ public static class NvSettings
         [
             Inherit,
             C("Off", W(SrPreset, 0, SrOverride, 0), "No SR override for this game, even if the global profile has one."),
-            C("Latest", W(SrPreset, 0xFFFFFF, SrOverride, 1), "NVIDIA's recommended preset for the driver's DLSS version."),
-            Preset(SrPreset, SrOverride, 'K', "Transformer gen 1 (DLSS 4). The usual pick for Quality, Balanced and DLAA."),
-            Preset(SrPreset, SrOverride, 'J', "Transformer gen 1, earlier variant of K."),
-            Preset(SrPreset, SrOverride, 'L', "Transformer gen 2 (DLSS 4.5). NVIDIA's pick for Ultra Performance."),
-            Preset(SrPreset, SrOverride, 'M', "Transformer gen 2 (DLSS 4.5). NVIDIA's pick for Performance."),
-            Preset(SrPreset, SrOverride, 'E', "CNN (DLSS 3). Cheapest; newer DLSS builds may ignore CNN presets."),
-            Preset(SrPreset, SrOverride, 'F', "CNN (DLSS 3), meant for Ultra Performance / DLAA."),
+            C("Recommended", W(SrPreset, 0xFFFFFF, SrOverride, 1), "DLSS picks per quality mode: K for DLAA / Quality / Balanced, M for Performance, L for Ultra Performance."),
+            Preset(SrPreset, SrOverride, 'K', "Default for DLAA, Quality and Balanced. Best image quality, highest cost."),
+            Preset(SrPreset, SrOverride, 'J', "Like K with slightly less ghosting but more flicker; NVIDIA recommends K over J."),
+            Preset(SrPreset, SrOverride, 'M', "Default for Performance mode."),
+            Preset(SrPreset, SrOverride, 'L', "Default for Ultra Performance mode."),
         ]),
         new("DLSS render resolution", "Override the game's DLSS quality mode.", "nv-sr-mode", [SrMode, SrRatio],
         [
@@ -282,10 +281,8 @@ public static class NvSettings
         [
             Inherit,
             C("Off", W(RrPreset, 0, RrOverride, 0), "No RR override for this game."),
-            C("Latest", W(RrPreset, 0xFFFFFF, RrOverride, 1), "NVIDIA's recommended RR preset."),
-            Preset(RrPreset, RrOverride, 'D', "Transformer gen 1."),
-            Preset(RrPreset, RrOverride, 'E', "Transformer gen 1, later revision."),
-            Preset(RrPreset, RrOverride, 'F', "Transformer gen 2. Newest."),
+            Preset(RrPreset, RrOverride, 'D', "Transformer model."),
+            Preset(RrPreset, RrOverride, 'F', "Default model (RR 2)."),
         ]),
         new("DLSS Frame Generation preset", "Force a DLSS FG model (with the FG override switch).", "nv-fg-preset", [FgPreset, FgOverride],
         [
@@ -329,13 +326,15 @@ public static class NvSettings
                 .Select(f => C($"{f} FPS", $"10835002={f:X}", f is 117 or 138 or 141 or 157 or 162 or 225 or 237
                     ? "A few FPS under a common refresh rate: keeps G-Sync / VRR active." : $"Cap at {f} FPS.")),
         ]),
-        new("Vertical sync", "Driver VSync override.", "nv-vsync", [0x00A879CF],
+        new("Vertical sync", "Driver VSync override (same choices as the NVIDIA Control Panel).", "nv-vsync", [VsyncMode, VsyncTear],
         [
             Inherit,
-            C("Use the app setting", "A879CF=60925292", "The game decides."),
-            C("Off", "A879CF=8416747", "Force off. Lowest latency, tearing without VRR."),
-            C("On", "A879CF=47814940", "Force on. Recommended with G-Sync + an FPS cap."),
-            C("Fast", "A879CF=18888888", "Fast Sync: no tearing above refresh without VSync's latency."),
+            C("Use the 3D application setting", W(VsyncMode, 0x60925292, VsyncTear, TearOff), "The game decides."),
+            C("Off", W(VsyncMode, 0x08416747, VsyncTear, TearOff), "Force off. Lowest latency, tearing without VRR."),
+            C("On", W(VsyncMode, 0x47814940, VsyncTear, TearOff), "Force on. The usual choice with G-Sync plus an FPS cap."),
+            C("Fast", W(VsyncMode, 0x18888888, VsyncTear, TearOff), "Fast Sync: no tearing above refresh without VSync's latency."),
+            C("Adaptive", W(VsyncMode, 0x47814940, VsyncTear, TearOn), "VSync on at refresh rate, off below it (tears instead of stuttering)."),
+            C("Adaptive (half refresh rate)", W(VsyncMode, 0x32610244, VsyncTear, TearOn), "Adaptive at half the refresh rate."),
         ]),
         new("Power management", "GPU clock behaviour.", "nv-power", [0x1057EB71],
         [

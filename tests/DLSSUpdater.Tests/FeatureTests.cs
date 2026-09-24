@@ -74,4 +74,18 @@ public class FeatureTests
         sm.SetLoaded(D(), D((0xB0D384C0, 1)), gameDefault: true);
         Assert.Equal("Game default (On)", sm.Selected!.Label);
     }
+
+    [Fact]
+    public void NvOption_CurrentPresetsAndVsync()
+    {
+        var all = NvSettings.Create();
+        Assert.Equal(["Use global", "Off", "Recommended", "K", "J", "M", "L"], all.First(o => o.Topic == "nv-sr-preset").Choices.Select(c => c.Label).ToArray());
+        Assert.Equal(["Use global", "Off", "D", "F"], all.First(o => o.Topic == "nv-rr-preset").Choices.Select(c => c.Label).ToArray());
+
+        var vs = all.First(o => o.Topic == "nv-vsync");
+        vs.SetLoaded(D(), D((0x00A879CF, 0x47814940), (0x005A375C, 0x96861077)), false);
+        Assert.Equal("Use global (On)", vs.Selected!.Label);
+        vs.SetLoaded(D((0x00A879CF, 0x47814940), (0x005A375C, 0x99941284)), D(), false);
+        Assert.Equal("Adaptive", vs.Selected!.Label);
+    }
 }
