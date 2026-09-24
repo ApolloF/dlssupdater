@@ -24,11 +24,25 @@ public partial class MainWindow : Window
             if (Environment.GetEnvironmentVariable("DLSSU_SNAPSHOT") is { Length: > 0 } shot) await Snapshot(shot);
         };
         StateChanged += (_, _) => UpdateMaximized();
+        PreviewKeyDown += OnPreviewKeyDown;
         SourceInitialized += (_, _) => RoundCorners();
         ((INotifyCollectionChanged)_vm.LogLines).CollectionChanged += (_, _) =>
         {
             if (LogList.Items.Count > 0) LogList.ScrollIntoView(LogList.Items[^1]);
         };
+    }
+
+    /// <summary>While a keybind button is waiting, the next key press becomes the binding.</summary>
+    private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (_vm.SettingsVm.Capturing is null) return;
+        var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+        var vk = System.Windows.Input.KeyInterop.VirtualKeyFromKey(key);
+        var mods = System.Windows.Input.Keyboard.Modifiers;
+        e.Handled = _vm.SettingsVm.HandleKey(vk,
+            mods.HasFlag(System.Windows.Input.ModifierKeys.Control),
+            mods.HasFlag(System.Windows.Input.ModifierKeys.Shift),
+            mods.HasFlag(System.Windows.Input.ModifierKeys.Alt));
     }
 
     private void UpdateMaximized()
@@ -52,6 +66,8 @@ public partial class MainWindow : Window
         foreach (var step in steps)
         {
             if (step == "settings") _vm.SettingsOpen = true;
+            else if (step.StartsWith("tab:")) _vm.SettingsVm.Tab = step[4..];
+            else if (step == "about") _vm.AboutOpen = true;
             else if (step == "log") _vm.LogOpen = true;
             else if (step.StartsWith("game:") && int.TryParse(step[5..], out var i))
                 _vm.SelectedGame = _vm.GamesView.Cast<GameViewModel>().ElementAtOrDefault(i);

@@ -19,6 +19,12 @@ public sealed partial class ComponentRow(string key, string name) : ObservableOb
 
 public sealed record DlssRow(string RelPath, string Kind, string Current, string Latest, RowState State);
 
+/// <summary>A DLSS version choice; Tag null = follow the default.</summary>
+public sealed record DlssChoice(string? Tag, string Label)
+{
+    public override string ToString() => Label;
+}
+
 public sealed record TargetOption(string Dir, string Label, string? Exe)
 {
     public override string ToString() => Label;
@@ -49,6 +55,7 @@ public sealed partial class GameViewModel : ObservableObject
             new ComponentRow("mfg", "MFG Unlock"),
             new ComponentRow("dlssnr", "DLSSNR runtime"),
             new ComponentRow("dlss", "DLSS SR · RR · FG"),
+            new ComponentRow("streamline", "Streamline (Dynamic MFG)"),
         ];
         foreach (var c in Components) c.PropertyChanged += (_, e) =>
         {
@@ -73,6 +80,13 @@ public sealed partial class GameViewModel : ObservableObject
     [ObservableProperty] private TargetOption? _selectedTarget;
     [ObservableProperty] private string _proxy = "dxgi.dll";
     [ObservableProperty] private InstallManifest? _manifest;
+    [ObservableProperty] private DlssChoice? _dlssChoice;
+
+    public ObservableCollection<DlssChoice> DlssChoices { get; } = [];
+    public bool HasStreamline => Info.Streamline.Count > 0;
+
+    /// <summary>Tag to install: this game's pin, else the global pin, else null (latest).</summary>
+    public string? EffectiveDlssTag => DlssChoice?.Tag ?? _s.Settings.DlssTag;
 
     public bool HasDlss => Info.Dlss.Count > 0;
     public bool HasAntiCheat => Info.AntiCheat is not null;
@@ -91,14 +105,15 @@ public sealed partial class GameViewModel : ObservableObject
         }
     }
 
-    public bool DlssCurrent => LatestDlss is { } l && Info.Dlss.All(d => d.Version is { } v && Trim(v) >= l);
+    public bool DlssCurrent => LatestDlss is { } l && Info.Dlss.All(d => d.Version is { } v && (DlssPinned ? Trim(v) == l : Trim(v) >= l));
 
     [ObservableProperty] private bool _needsUpdate;
 
     public string ActionText => Manifest is null ? "Install" : NeedsUpdate ? "Update" : "Reinstall";
     public string Subtitle => Info.Exes.Count == 0 ? "No executable found" : Path.GetFileName(Info.Exes[0]);
 
-    private Version? LatestDlss => _s.Store.Dlss?.Version is { } v ? Trim(v) : null;
+    private Version? LatestDlss => (_s.Store.DlssFor(EffectiveDlssTag)?.Version) is { } v ? Trim(v) : null;
+    private bool DlssPinned => EffectiveDlssTag is not null;
     private static Version Trim(Version v) => new(v.Major, v.Minor, Math.Max(v.Build, 0));
 
     public void Load(GameInfo info)
@@ -113,9 +128,33 @@ public sealed partial class GameViewModel : ObservableObject
         SelectedTarget = Targets.FirstOrDefault(t => preferred is not null && t.Dir.Equals(preferred, StringComparison.OrdinalIgnoreCase))
                          ?? Targets.FirstOrDefault();
 
+        RebuildDlssChoices();
         _loading = false;
         LoadManifest();
         OnPropertyChanged(string.Empty);
+    }
+
+    /// <summary>"Default" plus every DLSS SDK release; keeps the game's pin selected.</summary>
+    public void RebuildDlssChoices()
+    {
+        var wasLoading = _loading;
+        _loading = true;
+        var pinned = _s.Settings.Games.GetValueOrDefault(Id)?.DlssTag;
+        DlssChoices.Clear();
+        var global = _s.Settings.DlssTag ?? $"latest{(_s.Store.Dlss is { } l ? " · " + l.Tag : "")}";
+        DlssChoices.Add(new DlssChoice(null, $"Default ({global})"));
+        foreach (var r in _s.Store.DlssReleases) DlssChoices.Add(new DlssChoice(r.Tag, r.Tag));
+        if (pinned is not null && DlssChoices.All(c => c.Tag != pinned)) DlssChoices.Add(new DlssChoice(pinned, pinned));
+        DlssChoice = DlssChoices.FirstOrDefault(c => c.Tag == pinned) ?? DlssChoices[0];
+        _loading = wasLoading;
+    }
+
+    partial void OnDlssChoiceChanged(DlssChoice? value)
+    {
+        if (_loading) return;
+        _s.Settings.For(Id).DlssTag = value?.Tag;
+        _s.Settings.Save();
+        RefreshStatus();
     }
 
     private static IEnumerable<TargetOption> BuildTargets(GameInfo info, string? custom)
@@ -174,6 +213,7 @@ public sealed partial class GameViewModel : ObservableObject
         Set("mfg", m?.Mfg ?? _s.Settings.InstallMfgUnlock);
         Set("dlssnr", m?.DlssNr ?? _s.Settings.InstallDlssNr);
         Set("dlss", m?.Dlss ?? true);
+        Set("streamline", m?.Streamline ?? (_s.Settings.InstallStreamline && HasStreamline));
         _loading = false;
         RefreshStatus();
 
@@ -202,13 +242,32 @@ public sealed partial class GameViewModel : ObservableObject
         foreach (var d in Info.Dlss)
         {
             var rel = Path.GetRelativePath(Root, d.Path);
-            var state = d.Version is null || latest is null ? RowState.None : Trim(d.Version) >= latest ? RowState.Current : RowState.Update;
+            var ok = d.Version is { } v && latest is not null && (DlssPinned ? Trim(v) == latest : Trim(v) >= latest);
+            var state = d.Version is null || latest is null ? RowState.None : ok ? RowState.Current : RowState.Update;
             DlssRows.Add(new DlssRow(rel, d.Kind, FileUtil.Format(d.Version), latest is null ? "—" : FileUtil.Format(latest), state));
         }
+        var slLatest = store.Streamline?.Version;
+        var interposer = Info.Streamline.FirstOrDefault(d => d.Kind == "SL");
+        if (interposer is not null)
+        {
+            var extra = Info.Streamline.Count - 1;
+            var rel = Path.GetRelativePath(Root, interposer.Path) + (extra > 0 ? $"  +{extra} sl.*.dll" : "");
+            var cur = interposer.Version is { } v ? Trim(v) : null;
+            var state = cur is null || slLatest is null ? RowState.None : cur == Trim(slLatest) ? RowState.Current : RowState.Update;
+            DlssRows.Add(new DlssRow(rel, "SL", FileUtil.Format(cur), slLatest is null ? "—" : FileUtil.Format(slLatest), state));
+        }
+
         var dlssRow = Components.First(c => c.Key == "dlss");
         dlssRow.Installed = m?.Dlss == true ? m.DlssTag ?? "—" : HasDlss ? "game" : "—";
-        dlssRow.Latest = store.Dlss?.Tag ?? "—";
+        dlssRow.Latest = _s.Store.DlssFor(EffectiveDlssTag)?.Tag ?? "—";
         dlssRow.State = !HasDlss ? RowState.Missing : DlssCurrent ? RowState.Current : RowState.Update;
+
+        var slRow = Components.First(c => c.Key == "streamline");
+        slRow.Installed = interposer?.Version is { } iv ? FileUtil.Format(Trim(iv)) : HasStreamline ? "game" : "not used";
+        slRow.Latest = store.Streamline?.Tag ?? "—";
+        slRow.State = !HasStreamline ? RowState.None
+            : interposer?.Version is { } sv && slLatest is not null && Trim(sv) == Trim(slLatest) ? RowState.Current
+            : m?.Streamline == true ? RowState.Update : RowState.None;
 
         NeedsUpdate = m is not null && Components.Where(c => c.Key != "dlss" || m.Dlss).Any(c => c.State == RowState.Update && IsTracked(m, c.Key));
         OnPropertyChanged(nameof(ActionText));
@@ -223,6 +282,7 @@ public sealed partial class GameViewModel : ObservableObject
         "reshade" => m.ReShade,
         "mfg" => m.Mfg,
         "dlssnr" => m.DlssNr,
+        "streamline" => m.Streamline,
         _ => m.Dlss,
     };
 
@@ -256,6 +316,9 @@ public sealed partial class GameViewModel : ObservableObject
         DlssNr = !dlssOnly && On("dlssnr"),
         Dlss = dlssOnly || On("dlss"),
         AddMissingDlss = _s.Settings.AddMissingDlss && !dlssOnly && On("opti"),
+        DlssTag = EffectiveDlssTag,
+        Streamline = On("streamline") && HasStreamline,
+        ReShadeOverrides = _s.Settings.ReShadeOverrides,
         CarryOverIni = _s.Settings.CarryOverGameIni,
         Proxy = Proxy,
         Overrides = _s.Settings.IniOverrides,
@@ -271,6 +334,9 @@ public sealed partial class GameViewModel : ObservableObject
         DlssNr = m.DlssNr,
         Dlss = m.Dlss,
         AddMissingDlss = false,
+        DlssTag = EffectiveDlssTag,
+        Streamline = m.Streamline && HasStreamline,
+        ReShadeOverrides = _s.Settings.ReShadeOverrides,
         CarryOverIni = _s.Settings.CarryOverGameIni,
         Proxy = m.Proxy ?? Proxy,
         Overrides = _s.Settings.IniOverrides,

@@ -57,6 +57,23 @@ public class IntegrationTests
         Assert.Equal("true", ini.Get("DlssNr", "Enabled"));
         Assert.True(File.Exists(Path.Combine(target, ComponentStore.MfgFile)));
 
+        // Pin an older SDK: SR must be moved down to exactly that version (310.2.1 has no FG, which is skipped).
+        var pinned = store.DlssReleases.First(r => r.Tag.Contains("310.2")).Tag;
+        await installer.InstallAsync(GameScanner.Inspect(new GameEntry("G", game, "Manual")), target,
+            new InstallOptions { Dlss = true, DlssTag = pinned }, null, default);
+        var down = FileUtil.ReadVersion(Path.Combine(target, "nvngx_dlss.dll"))!;
+        Assert.Equal(FileUtil.ParseTag(pinned)!.Minor, down.Minor);
+        Assert.Equal(FileUtil.ParseTag(pinned)!.Build, down.Build);
+
+        // Streamline: a fake old sl.interposer.dll gets the real signed 2.14.x file.
+        File.Copy(Path.Combine(target, "nvngx_dlss.dll"), Path.Combine(target, "sl.interposer.dll"));
+        await installer.InstallAsync(GameScanner.Inspect(new GameEntry("G", game, "Manual")), target,
+            new InstallOptions { Streamline = true }, null, default);
+        var sl = FileUtil.ReadVersion(Path.Combine(target, "sl.interposer.dll"))!;
+        Assert.Equal(store.Streamline!.Version!.Minor, sl.Minor);
+        await installer.RestoreDlssAsync(GameScanner.Inspect(new GameEntry("G", game, "Manual")), target, default);
+        File.Delete(Path.Combine(target, "sl.interposer.dll"));
+
         await installer.UninstallAsync(GameScanner.Inspect(new GameEntry("G", game, "Manual")), target, default);
         Assert.Equal(["G-Win64-Shipping.exe"], Directory.EnumerateFileSystemEntries(target).Select(Path.GetFileName).ToArray());
     }

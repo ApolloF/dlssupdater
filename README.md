@@ -7,6 +7,7 @@ It pulls the latest releases of:
 - [OptiScaler-DLSSNR-PreSR-Multipass](https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass/releases) (standard package, prereleases included)
 - [MFGAdaUnlock-RenoDx](https://github.com/mavismmg/MFGAdaUnlock-RenoDx/releases) (`renodx-mfgunlock.addon64`)
 - [NVIDIA DLSS](https://github.com/NVIDIA/DLSS) runtime DLLs: `nvngx_dlss.dll` (SR), `nvngx_dlssd.dll` (RR), `nvngx_dlssg.dll` (FG)
+- [NVIDIA Streamline](https://github.com/NVIDIA-RTX/Streamline) (optional, signed `sl.*.dll` set for Dynamic MFG)
 
 and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll` and `ReShade64.dll`.
 
@@ -14,10 +15,15 @@ and installs them next to each game's executable, together with your own `nvngx_
 
 1. Finds the real game exe (Unreal `*-Win64-Shipping.exe`, Unity players, etc.; you can pick another folder).
 2. Copies `OptiScaler.dll` as the chosen proxy (`dxgi.dll` by default) plus its `OptiScaler\` backend folder.
-3. Builds `OptiScaler.ini` from the release ini plus your overrides (default: ReShade loading on, overlay on **Del**, DLSS preset override, DLSSNR settings). Any value the game's existing `OptiScaler.ini` already sets is kept, so updates never undo per-game tuning.
+3. Builds `OptiScaler.ini` from the release ini plus your overrides (default: ReShade loading on, overlay on **Del**, DLSS preset override, DLSSNR settings) and patches `ReShade.ini` (keybinds, tutorial, MFG Unlock options).
 4. Places `ReShade64.dll`, `renodx-mfgunlock.addon64` and `nvngx_dlssnr.dll` beside it.
-5. Replaces every older `nvngx_dlss*.dll` in the game with the latest NVIDIA build.
-6. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.
+5. Replaces every `nvngx_dlss*.dll` in the game with the latest NVIDIA build, or with a pinned version (globally or per game, also downgrading).
+6. Optionally replaces all `sl.*.dll` the game ships with one matching Streamline release (never mixed, never adds plugins).
+7. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.
+
+Ini rule: the app remembers which values it wrote. Those follow your settings on every update; anything a game's config already had, or you changed in-game, is kept.
+
+Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, frame generation, DLSSNR) and ReShade (overlay, effects, screenshot, reload).
 
 **Update all** re-applies everything to each managed game after a new release or after a game patch reverts the DLLs.
 

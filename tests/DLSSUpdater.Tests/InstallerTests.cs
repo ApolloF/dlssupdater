@@ -213,6 +213,63 @@ public class InstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task ReShadeIni_PatchedAndKept()
+    {
+        Write(Path.Combine(_target, "ReShade.ini"), "[INPUT]\nKeyOverlay=36,0,0,0\n[OVERLAY]\nShowFPS=2\n");
+        var installer = new Installer(_store);
+        var o = new InstallOptions
+        {
+            ReShade = true,
+            ReShadeOverrides = [new("INPUT", "KeyOverlay", "35,0,0,0"), new("OVERLAY", "TutorialProgress", "4"), new("RenoDX.MFGUnlock", "DynamicMFG", "1")],
+        };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+
+        var ini = IniFile.Load(Path.Combine(_target, "ReShade.ini"));
+        Assert.Equal("36,0,0,0", ini.Get("INPUT", "KeyOverlay"));   // the game's own ReShade.ini wins
+        Assert.Equal("2", ini.Get("OVERLAY", "ShowFPS"));
+        Assert.Equal("4", ini.Get("OVERLAY", "TutorialProgress"));
+        Assert.Equal("1", ini.Get("RenoDX.MFGUnlock", "DynamicMFG"));
+
+        // Profile change for a key we wrote rolls out on the next update.
+        o = new InstallOptions { ReShade = true, ReShadeOverrides = [new("RenoDX.MFGUnlock", "DynamicMFG", "0"), new("OVERLAY", "TutorialProgress", "4")] };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("0", IniFile.Load(Path.Combine(_target, "ReShade.ini")).Get("RenoDX.MFGUnlock", "DynamicMFG"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal("[INPUT]\nKeyOverlay=36,0,0,0\n[OVERLAY]\nShowFPS=2\n", T("ReShade.ini"));
+    }
+
+    [Fact]
+    public async Task Streamline_SwapsWholeSet_RestoreBringsBack()
+    {
+        var slCache = Path.Combine(ComponentStore.TagDir(Component.Streamline, "v2.14.1"), "x64");
+        Write(Path.Combine(slCache, "sl.interposer.dll"), "SL-NEW-interposer");
+        Write(Path.Combine(slCache, "sl.common.dll"), "SL-NEW-common");
+        Write(Path.Combine(slCache, "sl.dlss_g.dll"), "SL-NEW-dlssg");
+        var r = new ReleaseInfo { Tag = "v2.14.1" };
+        ComponentStore.MarkComplete(Component.Streamline, r);
+        _store.Streamline = r;
+
+        var slDir = Path.Combine(_root, @"Game\Plugins\Streamline\Binaries\ThirdParty\Win64");
+        Write(Path.Combine(slDir, "sl.interposer.dll"), "SL-OLD-interposer");
+        Write(Path.Combine(slDir, "sl.common.dll"), "SL-OLD-common");
+        Write(Path.Combine(slDir, "sl.gamespecific.dll"), "SL-CUSTOM");
+        var before = Snapshot();
+
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true, Streamline = true }, null, default);
+
+        Assert.Equal("SL-NEW-interposer", File.ReadAllText(Path.Combine(slDir, "sl.interposer.dll")));
+        Assert.Equal("SL-NEW-common", File.ReadAllText(Path.Combine(slDir, "sl.common.dll")));
+        Assert.Equal("SL-CUSTOM", File.ReadAllText(Path.Combine(slDir, "sl.gamespecific.dll")));
+        Assert.False(File.Exists(Path.Combine(slDir, "sl.dlss_g.dll"))); // never adds plugins the game didn't ship
+        Assert.Equal("v2.14.1", InstallManifest.Load(_target)!.StreamlineTag);
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
     public async Task AddsSrWhenGameHasNone()
     {
         File.Delete(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"));

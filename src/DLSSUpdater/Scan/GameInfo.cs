@@ -11,6 +11,7 @@ public sealed class DlssDll
         "nvngx_dlss.dll" => "SR",
         "nvngx_dlssd.dll" => "RR",
         "nvngx_dlssg.dll" => "FG",
+        "sl.interposer.dll" => "SL",
         _ => "?",
     };
 }
@@ -25,6 +26,8 @@ public sealed class GameInfo
     /// <summary>Executables, best candidate first.</summary>
     public List<string> Exes { get; set; } = [];
     public List<DlssDll> Dlss { get; set; } = [];
+    /// <summary>Streamline runtime files (sl.*.dll) the game ships.</summary>
+    public List<DlssDll> Streamline { get; set; } = [];
     public string? AntiCheat { get; set; }
     /// <summary>Directories under the root holding a .dlssupdater manifest.</summary>
     public List<string> Installs { get; set; } = [];

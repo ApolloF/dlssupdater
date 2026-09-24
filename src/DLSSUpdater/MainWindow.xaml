@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:DLSSUpdater.ViewModels"
         xmlns:core="clr-namespace:DLSSUpdater.Core"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="DLSS Updater" Width="1240" Height="800" MinWidth="980" MinHeight="600"
         WindowStartupLocation="CenterScreen" Icon="Assets/icon.ico"
         Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
@@ -28,6 +29,72 @@
         <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource Caps}">
             <Setter Property="Margin" Value="0,28,0,10" />
         </Style>
+
+        <DataTemplate x:Key="KeybindRow" DataType="{x:Type vm:KeybindViewModel}">
+            <Grid Margin="0,7">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="{Binding ButtonText}" FontFamily="{StaticResource MonoFont}" FontWeight="Normal"
+                        Command="{Binding DataContext.CaptureCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource BtnBase}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource Muted}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Capturing}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                                    <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Grid.Column="2" Content="Default" Style="{StaticResource BtnGhost}" Margin="8,0,0,0" ToolTip="Leave the game's default"
+                        Command="{Binding DataContext.ResetBindCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                <Button Grid.Column="3" Content="Off" Style="{StaticResource BtnGhost}" ToolTip="No key"
+                        Command="{Binding DataContext.DisableBindCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="OptionRow" DataType="{x:Type vm:IniOptionViewModel}">
+            <Grid Margin="0,9">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,24,0">
+                    <TextBlock Text="{Binding Label}" />
+                    <TextBlock Text="{Binding Hint}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                </StackPanel>
+                <CheckBox Grid.Column="1" IsChecked="{Binding IsOn}" VerticalAlignment="Center"
+                          Visibility="{Binding IsToggle, Converter={StaticResource BoolToVis}}" />
+                <ComboBox Grid.Column="1" Width="190" VerticalAlignment="Center" ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}"
+                          Visibility="{Binding IsToggle, Converter={StaticResource InvBoolToVis}}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="OverrideRow" DataType="{x:Type core:IniOverride}">
+            <Grid Margin="0,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="170" />
+                    <ColumnDefinition Width="36" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding Section}" Tag="Section" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" />
+                <TextBox Grid.Column="1" Text="{Binding Key}" Tag="Key" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
+                <TextBox Grid.Column="2" Text="{Binding Value}" Tag="Value" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
+                <Button Grid.Column="3" Style="{StaticResource BtnIcon}" Content="&#xE711;" HorizontalAlignment="Right"
+                        Command="{Binding DataContext.RemoveOverrideCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        CommandParameter="{Binding}" />
+            </Grid>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="{StaticResource Bg}">
@@ -48,6 +115,8 @@
                            Foreground="{StaticResource Muted}" Margin="6,0,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource CaptionBtn}" Content="&#xE946;" FontSize="13" ToolTip="About"
+                        Command="{Binding ToggleAboutCommand}" />
                 <Button Style="{StaticResource CaptionBtn}" Content="&#xE713;" FontSize="13" ToolTip="Settings"
                         Command="{Binding ToggleSettingsCommand}" />
                 <Button Style="{StaticResource CaptionBtn}" Content="&#xE921;" Click="OnMinimize" />
@@ -77,6 +146,11 @@
                     <StackPanel Margin="0,0,28,0">
                         <TextBlock Text="MFG UNLOCK" Style="{StaticResource Caps}" />
                         <TextBlock Text="{Binding MfgVersion}" Style="{StaticResource ChipValue}" />
+                    </StackPanel>
+                    <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
+                    <StackPanel Margin="0,0,28,0">
+                        <TextBlock Text="STREAMLINE" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding StreamlineVersion}" Style="{StaticResource ChipValue}" />
                     </StackPanel>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
                     <StackPanel Margin="0,0,28,0">
@@ -338,7 +412,14 @@
                     </Border>
 
                     <!-- DLSS files -->
-                    <TextBlock Text="DLSS FILES" Style="{StaticResource SectionTitle}" />
+                    <Grid>
+                        <TextBlock Text="DLSS FILES" Style="{StaticResource SectionTitle}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,6">
+                            <TextBlock Text="VERSION" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <ComboBox Width="220" MaxDropDownHeight="360" ItemsSource="{Binding DlssChoices}" SelectedItem="{Binding DlssChoice}"
+                                      ToolTip="Pin a DLSS version for this game" />
+                        </StackPanel>
+                    </Grid>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <ItemsControl ItemsSource="{Binding DlssRows}">
@@ -398,151 +479,286 @@
 
             <!-- Settings overlay -->
             <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding SettingsOpen, Converter={StaticResource BoolToVis}}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding SettingsVm}">
-                    <StackPanel Margin="36,28,36,36" MaxWidth="860">
+                <Grid DataContext="{Binding SettingsVm}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="36,28,36,0" MaxWidth="860">
                         <Grid>
                             <TextBlock Text="Settings" Style="{StaticResource H1}" />
                             <Button Style="{StaticResource BtnIcon}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="Close"
                                     Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                         </Grid>
-
-                        <TextBlock Text="LOCAL COMPONENTS" Style="{StaticResource SectionTitle}" />
-                        <Border Style="{StaticResource Card}" Padding="16,4">
-                            <StackPanel>
-                                <Grid Margin="0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="160" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="nvngx_dlssnr.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding DlssNrInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
-                                    <Button Grid.Column="2" Content="Import…" Command="{Binding ImportDlssNrCommand}" Margin="12,0,0,0" />
-                                </Grid>
-                                <Border Style="{StaticResource Divider}" />
-                                <Grid Margin="0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="160" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="ReShade64.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding ReShadeInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
-                                    <Button Grid.Column="2" Content="Import…" Command="{Binding ImportReShadeCommand}" Margin="12,0,0,0" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Text="These aren't redistributable, so they're imported once and kept in the app's data folder. Use the ReShade build with full add-on support."
-                                   Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" />
-
-                        <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />
-                        <Border Style="{StaticResource Card}" Padding="16,6">
-                            <StackPanel>
-                                <Grid Margin="0,8">
-                                    <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />
-                                    <ComboBox Width="150" HorizontalAlignment="Right" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding DefaultProxy}" />
-                                </Grid>
-                                <CheckBox Content="Include prereleases" IsChecked="{Binding IncludePrereleases}" Margin="0,8" />
-                                <CheckBox Content="Install ReShade" IsChecked="{Binding InstallReShade}" Margin="0,8" />
-                                <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
-                                <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
-                                <CheckBox Content="Add nvngx_dlss.dll to games that ship without it" IsChecked="{Binding AddMissingDlss}" Margin="0,8" />
-                                <CheckBox Content="Keep settings from a game's existing OptiScaler.ini (they win over the overrides below)" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
-                            </StackPanel>
-                        </Border>
-
-                        <Grid>
-                            <TextBlock Text="OPTISCALER.INI OVERRIDES" Style="{StaticResource SectionTitle}" />
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4">
-                                <Button Content="Reset" Style="{StaticResource BtnGhost}" Command="{Binding ResetOverridesCommand}" />
-                                <Button Style="{StaticResource BtnGhost}" Command="{Binding AddOverrideCommand}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
-                                        <TextBlock Text="Add" />
-                                    </StackPanel>
-                                </Button>
+                        <Grid Margin="0,18,0,0">
+                            <Border Style="{StaticResource Divider}" VerticalAlignment="Bottom" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource Segment}" Content="General" GroupName="st" Margin="0,0,24,0"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=General}" />
+                                <RadioButton Style="{StaticResource Segment}" Content="Keybinds" GroupName="st" Margin="0,0,24,0"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Keybinds}" />
+                                <RadioButton Style="{StaticResource Segment}" Content="ReShade &amp; MFG" GroupName="st" Margin="0,0,24,0"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=ReShade}" />
+                                <RadioButton Style="{StaticResource Segment}" Content="Advanced" GroupName="st"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Advanced}" />
                             </StackPanel>
                         </Grid>
-                        <Border Style="{StaticResource Card}" Padding="16,10">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="160" />
-                                        <ColumnDefinition Width="36" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="SECTION" Style="{StaticResource Caps}" />
-                                    <TextBlock Grid.Column="1" Text="KEY" Style="{StaticResource Caps}" Margin="8,0,0,0" />
-                                    <TextBlock Grid.Column="2" Text="VALUE" Style="{StaticResource Caps}" Margin="8,0,0,0" />
-                                </Grid>
-                                <ItemsControl ItemsSource="{Binding Overrides}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type core:IniOverride}">
-                                            <Grid Margin="0,3">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="140" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="160" />
-                                                    <ColumnDefinition Width="36" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox Text="{Binding Section}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" />
-                                                <TextBox Grid.Column="1" Text="{Binding Key}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
-                                                <TextBox Grid.Column="2" Text="{Binding Value}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
-                                                <Button Grid.Column="3" Style="{StaticResource BtnIcon}" Content="&#xE711;" HorizontalAlignment="Right"
-                                                        Command="{Binding DataContext.RemoveOverrideCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                        CommandParameter="{Binding}" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Text="Applied on top of each release's OptiScaler.ini. Values a game's existing ini already sets are kept. 0x2e = Delete key for the overlay menu." />
+                    </StackPanel>
 
-                        <TextBlock Text="GAME FOLDERS" Style="{StaticResource SectionTitle}" />
-                        <Border Style="{StaticResource Card}" Padding="16,6">
-                            <StackPanel>
-                                <ItemsControl ItemsSource="{Binding Folders}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:FolderEntry}">
-                                            <Grid Margin="0,4">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="70" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Kind}" Style="{StaticResource Caps}" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Path}" Style="{StaticResource Mono}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                <Button Grid.Column="2" Style="{StaticResource BtnIcon}" Content="&#xE711;"
-                                                        Command="{Binding DataContext.RemoveFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                        CommandParameter="{Binding}" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBlock Text="Steam, Epic, GOG, EA, Ubisoft and Xbox games are found automatically." Style="{StaticResource MutedText}"
-                                           FontSize="12" Margin="0,6" />
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                                    <Button Content="Add game folder" Margin="0,0,8,0"
-                                            Command="{Binding DataContext.AddGameFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                    <Button Content="Add library folder" Margin="0,0,8,0"
-                                            Command="{Binding DataContext.AddLibraryRootCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                    <Button Content="Show hidden games" Style="{StaticResource BtnGhost}" Command="{Binding ShowHiddenCommand}" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="36,0,36,36" MaxWidth="860">
+
+                            <!-- ===== General ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=General}">
+                                <TextBlock Text="LOCAL COMPONENTS" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <StackPanel>
+                                        <Grid Margin="0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="nvngx_dlssnr.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding DlssNrInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+                                            <Button Grid.Column="2" Content="Import…" Command="{Binding ImportDlssNrCommand}" Margin="12,0,0,0" />
+                                        </Grid>
+                                        <Border Style="{StaticResource Divider}" />
+                                        <Grid Margin="0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="ReShade64.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding ReShadeInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+                                            <Button Grid.Column="2" Content="Import…" Command="{Binding ImportReShadeCommand}" Margin="12,0,0,0" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="These aren't redistributable, so they're imported once and kept in the app's data folder. Use the ReShade build with full add-on support."
+                                           Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                                <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,6">
+                                    <StackPanel>
+                                        <Grid Margin="0,8">
+                                            <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />
+                                            <ComboBox Width="170" HorizontalAlignment="Right" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding DefaultProxy}" />
+                                        </Grid>
+                                        <Grid Margin="0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="DLSS version" VerticalAlignment="Center" />
+                                                <TextBlock Text="A pinned version is installed exactly, also downgrading. Games can pin their own." Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                            <ComboBox Width="170" HorizontalAlignment="Right" VerticalAlignment="Center" MaxDropDownHeight="360"
+                                                      ItemsSource="{Binding DlssChoices}" SelectedItem="{Binding SelectedDlss}" />
+                                        </Grid>
+                                        <CheckBox Content="Include prereleases" IsChecked="{Binding IncludePrereleases}" Margin="0,8" />
+                                        <CheckBox Content="Install ReShade" IsChecked="{Binding InstallReShade}" Margin="0,8" />
+                                        <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
+                                        <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
+                                        <CheckBox IsChecked="{Binding InstallStreamline}" Margin="0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Replace the game's Streamline files with the latest SDK" />
+                                                <TextBlock Text="For Dynamic MFG (needs DLSS FG 310.9.1 + Streamline 2.14.1). Only files the game already ships are swapped, always as one set."
+                                                           Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <CheckBox Content="Add nvngx_dlss.dll to games that ship without it" IsChecked="{Binding AddMissingDlss}" Margin="0,8" />
+                                        <CheckBox Content="Keep settings from a game's existing OptiScaler.ini / ReShade.ini" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="GAME FOLDERS" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,6">
+                                    <StackPanel>
+                                        <ItemsControl ItemsSource="{Binding Folders}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:FolderEntry}">
+                                                    <Grid Margin="0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="70" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Kind}" Style="{StaticResource Caps}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Path}" Style="{StaticResource Mono}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                        <Button Grid.Column="2" Style="{StaticResource BtnIcon}" Content="&#xE711;"
+                                                                Command="{Binding DataContext.RemoveFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="Steam, Epic, GOG, EA, Ubisoft and Xbox games are found automatically." Style="{StaticResource MutedText}"
+                                                   FontSize="12" Margin="0,6" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                            <Button Content="Add game folder" Margin="0,0,8,0"
+                                                    Command="{Binding DataContext.AddGameFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <Button Content="Add library folder" Margin="0,0,8,0"
+                                                    Command="{Binding DataContext.AddLibraryRootCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <Button Content="Show hidden games" Style="{StaticResource BtnGhost}" Command="{Binding ShowHiddenCommand}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="GITHUB" Style="{StaticResource SectionTitle}" />
+                                <TextBox Text="{Binding GitHubToken, UpdateSourceTrigger=LostFocus}" Tag="Personal access token (optional, raises the API rate limit)" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
+                                    <Button Content="Open data folder" Style="{StaticResource BtnGhost}" Command="{Binding OpenDataFolderCommand}" />
                                 </StackPanel>
                             </StackPanel>
+
+                            <!-- ===== Keybinds ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Keybinds}">
+                                <TextBlock Text="OPTISCALER" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding OptiKeybinds}" ItemTemplate="{StaticResource KeybindRow}" />
+                                </Border>
+                                <TextBlock Text="RESHADE" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding ReShadeKeybinds}" ItemTemplate="{StaticResource KeybindRow}" />
+                                </Border>
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="Click a key, then press the new one (Esc cancels). ReShade keys may include Ctrl / Shift / Alt. Applied on the next install or update; keys you changed in-game stay as they are." />
+                            </StackPanel>
+
+                            <!-- ===== ReShade & MFG ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=ReShade}">
+                                <TextBlock Text="RESHADE" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding ReShadeOptions}" ItemTemplate="{StaticResource OptionRow}" />
+                                </Border>
+                                <TextBlock Text="MFG UNLOCK" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding MfgOptions}" ItemTemplate="{StaticResource OptionRow}" />
+                                </Border>
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="Written to ReShade.ini next to the game. For Dynamic MFG also set the NVIDIA App's DLSS Frame Generation override to 'Use the 3D application setting' and cold-restart the game." />
+                            </StackPanel>
+
+                            <!-- ===== Advanced ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Advanced}">
+                                <Grid>
+                                    <TextBlock Text="OPTISCALER.INI" Style="{StaticResource SectionTitle}" />
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding AddOverrideCommand}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                            <TextBlock Text="Add" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <Border Style="{StaticResource Card}" Padding="16,10">
+                                    <ItemsControl ItemsSource="{Binding Overrides}" ItemTemplate="{StaticResource OverrideRow}" />
+                                </Border>
+
+                                <Grid>
+                                    <TextBlock Text="RESHADE.INI" Style="{StaticResource SectionTitle}" />
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding AddReShadeOverrideCommand}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                            <TextBlock Text="Add" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <Border Style="{StaticResource Card}" Padding="16,10">
+                                    <ItemsControl ItemsSource="{Binding ReShadeOverrides}" ItemTemplate="{StaticResource OverrideRow}" />
+                                </Border>
+
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="Raw section / key / value pairs, also edited by the Keybinds and ReShade tabs. A value a game already set itself is kept; values written by this app follow your changes." />
+                                <Button Content="Reset all to defaults" Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Margin="0,16,0,0"
+                                        Command="{Binding ResetOverridesCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- About overlay -->
+            <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding AboutOpen, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="36,28,36,36" MaxWidth="760" HorizontalAlignment="Left">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="DLSS Updater" Style="{StaticResource H1}" />
+                                <TextBlock Text="{Binding AppVersion}" Style="{StaticResource MutedText}" VerticalAlignment="Bottom" Margin="10,0,0,3" />
+                            </StackPanel>
+                            <Button Style="{StaticResource BtnIcon}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="Close" Command="{Binding ToggleAboutCommand}" />
+                        </Grid>
+
+                        <TextBlock Text="USAGE" Style="{StaticResource SectionTitle}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" LineHeight="21">
+                            <Run Foreground="{StaticResource Text}">Install / Update</Run> puts OptiScaler-NR, ReShade, MFG Unlock and DLSSNR next to the game exe and swaps DLSS to the chosen version.<LineBreak />
+                            <Run Foreground="{StaticResource Text}">Update all</Run> re-applies everything after a new release or a game patch.<LineBreak />
+                            <Run Foreground="{StaticResource Text}">DLSS only</Run> swaps DLSS files without injecting anything (safe with anti-cheat).<LineBreak />
+                            <Run Foreground="{StaticResource Text}">Uninstall / Restore DLSS</Run> put back the originals kept in .dlssupdater\backup.<LineBreak />
+                            Settings a game already has in OptiScaler.ini or ReShade.ini are kept on update.
+                        </TextBlock>
+
+                        <TextBlock Text="PROJECTS" Style="{StaticResource SectionTitle}" />
+                        <Border Style="{StaticResource Card}" Padding="16,4">
+                            <ItemsControl>
+                                <ItemsControl.Resources>
+                                    <Style TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+                                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="0,9" />
+                                        <Setter Property="FontWeight" Value="Normal" />
+                                        <Setter Property="Command" Value="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                        <Setter Property="CommandParameter" Value="{Binding Tag, RelativeSource={RelativeSource Self}}" />
+                                        <Setter Property="ContentTemplate">
+                                            <Setter.Value>
+                                                <DataTemplate>
+                                                    <Grid Width="660">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="210" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding [0]}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding [1]}" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="2" Text="&#xE8A7;" Style="{StaticResource Icon}" Foreground="{StaticResource Dim}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ItemsControl.Resources>
+                                <Button Tag="https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass">
+                                    <x:Array Type="sys:String"><sys:String>OptiScaler-NR</sys:String><sys:String>wilsjo2 · DLSSNR fork of OptiScaler</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/optiscaler/OptiScaler">
+                                    <x:Array Type="sys:String"><sys:String>OptiScaler</sys:String><sys:String>Upstream project and wiki</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/mavismmg/MFGAdaUnlock-RenoDx">
+                                    <x:Array Type="sys:String"><sys:String>MFG Unlock</sys:String><sys:String>mavismmg · RTX 40 multi frame generation add-on</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/NVIDIA/DLSS">
+                                    <x:Array Type="sys:String"><sys:String>NVIDIA DLSS</sys:String><sys:String>SR, RR and FG runtime DLLs</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/NVIDIA-RTX/Streamline">
+                                    <x:Array Type="sys:String"><sys:String>NVIDIA Streamline</sys:String><sys:String>sl.*.dll runtime used for DLSS FG</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://reshade.me">
+                                    <x:Array Type="sys:String"><sys:String>ReShade</sys:String><sys:String>crosire · use the full add-on build</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/clshortfuse/renodx">
+                                    <x:Array Type="sys:String"><sys:String>RenoDX</sys:String><sys:String>ShortFuse · add-on framework, DLSSNR compat runtime</sys:String></x:Array>
+                                </Button>
+                                <Button Tag="https://github.com/ApolloF/dlssupdater">
+                                    <x:Array Type="sys:String"><sys:String>DLSS Updater</sys:String><sys:String>This app · source and releases</sys:String></x:Array>
+                                </Button>
+                            </ItemsControl>
                         </Border>
 
-                        <TextBlock Text="GITHUB" Style="{StaticResource SectionTitle}" />
-                        <TextBox Text="{Binding GitHubToken, UpdateSourceTrigger=LostFocus}" Tag="Personal access token (optional, raises the API rate limit)" />
-
-                        <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
-                            <Button Content="Open data folder" Style="{StaticResource BtnGhost}" Command="{Binding OpenDataFolderCommand}" />
-                        </StackPanel>
+                        <TextBlock Text="Data, cache and log: %LocalAppData%\DLSSUpdater" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,16,0,0" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+
         </Grid>
 
         <!-- ============ Log ============ -->

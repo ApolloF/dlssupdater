@@ -13,6 +13,7 @@
             <v:InverseBoolToVisibility x:Key="InvBoolToVis" />
             <v:StateToBrush x:Key="StateToBrush" />
             <v:EqualsToBool x:Key="EqualsToBool" />
+            <v:EqualsToVisibility x:Key="EqualsToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

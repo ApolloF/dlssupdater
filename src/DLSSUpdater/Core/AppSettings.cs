@@ -8,6 +8,8 @@ public sealed class GameOverride
 {
     public string? TargetDir { get; set; }
     public string? Proxy { get; set; }
+    /// <summary>DLSS release tag pinned for this game; null follows the global choice.</summary>
+    public string? DlssTag { get; set; }
 }
 
 public sealed class AppSettings
@@ -29,6 +31,10 @@ public sealed class AppSettings
     public bool CarryOverGameIni { get; set; } = true;
     public string? GitHubToken { get; set; }
     public List<IniOverride> IniOverrides { get; set; } = ConfigProfile.Defaults();
+    public List<IniOverride> ReShadeOverrides { get; set; } = ConfigProfile.ReShadeDefaults();
+    public bool InstallStreamline { get; set; }
+    /// <summary>DLSS release tag to install; null = latest.</summary>
+    public string? DlssTag { get; set; }
 
     public GameOverride For(string gameId)
     {

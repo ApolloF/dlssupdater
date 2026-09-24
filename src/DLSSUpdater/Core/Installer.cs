@@ -13,9 +13,13 @@ public sealed class InstallOptions
     public bool DlssNr { get; init; }
     public bool Dlss { get; init; }
     public bool AddMissingDlss { get; init; }
+    /// <summary>DLSS release to install; null = latest (never downgrades a newer game DLL).</summary>
+    public string? DlssTag { get; init; }
+    public bool Streamline { get; init; }
     public bool CarryOverIni { get; init; } = true;
     public string Proxy { get; init; } = "dxgi.dll";
     public IReadOnlyList<IniOverride> Overrides { get; init; } = [];
+    public IReadOnlyList<IniOverride> ReShadeOverrides { get; init; } = [];
     public bool AntiCheatConfirmed { get; init; }
 }
 
@@ -62,7 +66,9 @@ public sealed class Installer(ComponentStore store)
         // Fetch everything first so a network failure never leaves a half-installed game.
         var pkg = o.Opti ? await store.EnsureOptiAsync(progress, ct) : null;
         var mfg = o.Mfg ? await store.EnsureMfgAsync(progress, ct) : null;
-        var dlss = o.Dlss ? await store.EnsureDlssAsync(progress, ct) : null;
+        var dlss = o.Dlss ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
+        var sl = o.Streamline && game.Streamline.Count > 0 ? await store.EnsureStreamlineAsync(progress, ct) : null;
+        if (o.Streamline && game.Streamline.Count == 0) Log.Info($"{game.Name}: no Streamline files in this game, skipped");
         if (o.DlssNr && !File.Exists(store.DlssNrPath))
             throw new FileNotFoundException("nvngx_dlssnr.dll has not been imported (Settings → Components).");
         if (o.ReShade && !File.Exists(store.ReShadePath))
@@ -86,6 +92,7 @@ public sealed class Installer(ComponentStore store)
                 }
                 if (o.ReShade)
                 {
+                    WriteReShadeIni(ctx, o);
                     Place(ctx, store.ReShadePath, Path.Combine(targetDir, ComponentStore.ReShadeFile));
                     m.ReShade = true;
                     m.ReShadeSha = HashCache.Get(store.ReShadePath);
@@ -104,9 +111,16 @@ public sealed class Installer(ComponentStore store)
                 }
                 if (dlss is not null)
                 {
-                    SwapDlss(ctx, dlss, o.AddMissingDlss);
+                    SwapDlss(ctx, dlss, o.AddMissingDlss, exact: o.DlssTag is not null);
                     m.Dlss = true;
-                    m.DlssTag = store.Dlss?.Tag;
+                    m.DlssTag = store.DlssFor(o.DlssTag)?.Tag;
+                    m.DlssPinned = o.DlssTag is not null;
+                }
+                if (sl is not null)
+                {
+                    SwapStreamline(ctx, sl);
+                    m.Streamline = true;
+                    m.StreamlineTag = store.Streamline?.Tag;
                 }
                 m.AntiCheatConfirmed |= o.AntiCheatConfirmed;
                 Log.Info($"{game.Name}: done ({targetDir})");
@@ -161,9 +175,39 @@ public sealed class Installer(ComponentStore store)
         var releaseIni = File.ReadAllText(Path.Combine(pkg, "OptiScaler.ini"));
         string? currentIni = File.Exists(iniPath) ? File.ReadAllText(iniPath) : null;
         if (currentIni is not null && !m.Owns(ctx.Rel(iniPath))) Backup(ctx, iniPath, "file", copy: true);
-        FileUtil.AtomicWriteText(iniPath, ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni));
+        if (currentIni is not null && m.Owns(ctx.Rel(iniPath)) && m.OptiIni.Count == 0)
+        {
+            // Installs from 1.0.0 didn't record what they wrote; values still equal to the profile are ours.
+            var cur = IniFile.Parse(currentIni);
+            foreach (var ov in o.Overrides)
+                if (string.Equals(cur.Get(ov.Section, ov.Key), ov.Value, StringComparison.OrdinalIgnoreCase)) m.OptiIni[ov.Id] = ov.Value;
+        }
+        var merged = ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni, m.OptiIni);
+        FileUtil.AtomicWriteText(iniPath, merged.Text);
+        m.OptiIni = merged.Applied;
         m.AddFile(ctx.Rel(iniPath));
         Log.Info($"  {o.Proxy} ← OptiScaler-NR, OptiScaler.ini merged");
+    }
+
+    /// <summary>
+    /// ReShade.ini sits next to ReShade64.dll. It is only patched: keys ReShade or the user wrote stay,
+    /// our profile keys are added or updated (unless the user changed them since we last wrote them).
+    /// </summary>
+    private static void WriteReShadeIni(Ctx ctx, InstallOptions o)
+    {
+        var path = Path.Combine(ctx.Target, "ReShade.ini");
+        var rel = ctx.Rel(path);
+        var exists = File.Exists(path);
+        if (o.ReShadeOverrides.Count == 0 && ctx.M.ReShadeIni.Count == 0) return;
+
+        var current = exists ? File.ReadAllText(path) : null;
+        var merged = ConfigProfile.Merge(current ?? "", current, o.ReShadeOverrides, carryOver: true, ctx.M.ReShadeIni);
+        if (current == merged.Text) { ctx.M.ReShadeIni = merged.Applied; return; }
+
+        if (exists && !ctx.M.Owns(rel) && ctx.M.BackupOf(rel) is null) Backup(ctx, path, "file", copy: true);
+        FileUtil.AtomicWriteText(path, merged.Text);
+        ctx.M.ReShadeIni = merged.Applied;
+        if (!exists) ctx.M.AddFile(rel);
     }
 
     /// <summary>Copies the package folder in place, skipping unchanged files and docs.</summary>
@@ -181,7 +225,35 @@ public sealed class Installer(ComponentStore store)
         }
     }
 
-    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool addMissing)
+    /// <summary>
+    /// Replaces every sl.*.dll the game ships with the same file from one Streamline release, so the set
+    /// never mixes versions. Plugins the SDK doesn't have (rare, game-specific) are left alone and logged.
+    /// </summary>
+    private static void SwapStreamline(Ctx ctx, string slDir)
+    {
+        var m = ctx.M;
+        var scan = new GameInfo { Root = ctx.Root };
+        GameInspector.Inspect(scan);
+        foreach (var dll in scan.Streamline)
+        {
+            var rel = ctx.Rel(dll.Path);
+            var src = Path.Combine(slDir, dll.Name);
+            if (!File.Exists(src))
+            {
+                Log.Info($"  {rel}: not in the Streamline SDK, left as is");
+                continue;
+            }
+            if (FileUtil.SameFile(src, dll.Path)) continue;
+            var entry = m.BackupOf(rel);
+            var ours = entry?.InstalledSha is { } s && s == HashCache.Get(dll.Path);
+            if (!ours) Backup(ctx, dll.Path, "streamline");
+            FileUtil.AtomicCopy(src, dll.Path);
+            if (m.BackupOf(rel) is { } b) b.InstalledSha = HashCache.Get(src);
+            Log.Info($"  {rel}: {FileUtil.Format(dll.Version)} → {FileUtil.Format(FileUtil.ReadVersion(src))}");
+        }
+    }
+
+    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool addMissing, bool exact = false)
     {
         var m = ctx.M;
         var scan = new GameInfo { Root = ctx.Root };
@@ -193,7 +265,8 @@ public sealed class Installer(ComponentStore store)
             if (!latest.TryGetValue(dll.Name, out var src)) continue;
             var newVer = FileUtil.ReadVersion(src);
             var rel = ctx.Rel(dll.Path);
-            if (dll.Version is not null && newVer is not null && dll.Version >= newVer) continue;
+            // Latest: only ever upgrade. Pinned: move to exactly that version, up or down.
+            if (dll.Version is not null && newVer is not null && (exact ? dll.Version == newVer : dll.Version >= newVer)) continue;
 
             var srcSha = HashCache.Get(src);
             var entry = m.BackupOf(rel);
@@ -204,7 +277,7 @@ public sealed class Installer(ComponentStore store)
             Log.Info($"  {rel}: {FileUtil.Format(dll.Version)} → {FileUtil.Format(newVer)}");
         }
 
-        if (addMissing && !scan.Dlss.Any(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)))
+        if (addMissing && latest.ContainsKey("nvngx_dlss.dll") && !scan.Dlss.Any(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)))
         {
             var dest = Path.Combine(ctx.Target, "nvngx_dlss.dll");
             Place(ctx, latest["nvngx_dlss.dll"], dest);
@@ -283,7 +356,7 @@ public sealed class Installer(ComponentStore store)
         var ctx = new Ctx(FileUtil.Normalize(Path.Combine(targetDir, m.RootRel)), targetDir, m);
         try
         {
-            foreach (var b in m.Backups.Where(b => b.Kind == "dlss").ToList())
+            foreach (var b in m.Backups.Where(b => b.Kind is "dlss" or "streamline").ToList())
             {
                 Restore(ctx, b);
                 m.Backups.Remove(b);
@@ -295,9 +368,12 @@ public sealed class Installer(ComponentStore store)
             }
             m.Dlss = false;
             m.DlssTag = null;
+            m.DlssPinned = false;
+            m.Streamline = false;
+            m.StreamlineTag = null;
             if (m.IsEmpty) Directory.Delete(InstallManifest.DirFor(targetDir), true);
             else m.Save(targetDir);
-            Log.Info($"{game.Name}: original DLSS files restored");
+            Log.Info($"{game.Name}: original DLSS and Streamline files restored");
         }
         catch (UnauthorizedAccessException) { throw new NeedsAdminException(targetDir); }
     }, ct);

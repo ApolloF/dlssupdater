@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace DLSSUpdater.Core;
 
-public enum Component { OptiScaler, MfgUnlock, Dlss }
+public enum Component { OptiScaler, MfgUnlock, Dlss, Streamline }
 
 public sealed class ReleaseInfo
 {
@@ -32,6 +32,7 @@ public sealed partial class ComponentStore
     public const string OptiRepo = "wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass";
     public const string MfgRepo = "mavismmg/MFGAdaUnlock-RenoDx";
     public const string DlssRepo = "NVIDIA/DLSS";
+    public const string StreamlineRepo = "NVIDIA-RTX/Streamline";
 
     public const string DlssNrFile = "nvngx_dlssnr.dll";
     public const string ReShadeFile = "ReShade64.dll";
@@ -52,6 +53,7 @@ public sealed partial class ComponentStore
         [Component.OptiScaler] = new(1, 1),
         [Component.MfgUnlock] = new(1, 1),
         [Component.Dlss] = new(1, 1),
+        [Component.Streamline] = new(1, 1),
     };
 
     public ComponentStore(GitHubClient gh, Func<bool> includePrereleases)
@@ -63,11 +65,15 @@ public sealed partial class ComponentStore
     public ReleaseInfo? Opti { get; internal set; }
     public ReleaseInfo? Mfg { get; internal set; }
     public ReleaseInfo? Dlss { get; internal set; }
+    public ReleaseInfo? Streamline { get; internal set; }
+    /// <summary>Every DLSS SDK release, newest first, for pinning an older version.</summary>
+    public IReadOnlyList<ReleaseInfo> DlssReleases { get; internal set; } = [];
 
     public ReleaseInfo? Get(Component c) => c switch
     {
         Component.OptiScaler => Opti,
         Component.MfgUnlock => Mfg,
+        Component.Streamline => Streamline,
         _ => Dlss,
     };
 
@@ -81,7 +87,9 @@ public sealed partial class ComponentStore
         await Task.WhenAll(
             Resolve(Component.OptiScaler, ResolveOptiAsync, v => Opti = v, ct),
             Resolve(Component.MfgUnlock, ResolveMfgAsync, v => Mfg = v, ct),
-            Resolve(Component.Dlss, ResolveDlssAsync, v => Dlss = v, ct));
+            Resolve(Component.Dlss, ResolveDlssAsync, v => Dlss = v, ct),
+            Resolve(Component.Streamline, ResolveStreamlineAsync, v => Streamline = v, ct));
+        if (DlssReleases.Count == 0 && Dlss is not null) DlssReleases = [Dlss];
     }
 
     private static async Task Resolve(Component c, Func<CancellationToken, Task<ReleaseInfo?>> resolve, Action<ReleaseInfo?> set, CancellationToken ct)
@@ -138,13 +146,37 @@ public sealed partial class ComponentStore
 
     private async Task<ReleaseInfo?> ResolveDlssAsync(CancellationToken ct)
     {
-        foreach (var r in await _gh.GetReleasesAsync(DlssRepo, 5, ct))
+        DlssReleases = (await _gh.GetReleasesAsync(DlssRepo, 40, ct))
+            .Where(Accept)
+            .Select(r => DlssRelease(r.TagName, r.Prerelease, r.PublishedAt))
+            .ToList();
+        return DlssReleases.FirstOrDefault();
+    }
+
+    private static ReleaseInfo DlssRelease(string tag, bool pre = false, DateTime? published = null) => new()
+    {
+        Tag = tag, Prerelease = pre, Published = published,
+        Files = DlssFiles.Select(f => (f, DlssRawUrl(tag, f), (string?)null)).ToList(),
+    };
+
+    /// <summary>The release to install for a pinned tag, or the latest when <paramref name="tag"/> is null.</summary>
+    public ReleaseInfo? DlssFor(string? tag) =>
+        tag is null ? Dlss : DlssReleases.FirstOrDefault(r => r.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)) ?? DlssRelease(tag);
+
+    [GeneratedRegex(@"^streamline-sdk-v[\d.]+\.zip$", RegexOptions.IgnoreCase)]
+    private static partial Regex StreamlineAsset();
+
+    private async Task<ReleaseInfo?> ResolveStreamlineAsync(CancellationToken ct)
+    {
+        foreach (var r in await _gh.GetReleasesAsync(StreamlineRepo, 10, ct))
         {
             if (!Accept(r)) continue;
+            var zip = r.Assets.FirstOrDefault(a => StreamlineAsset().IsMatch(a.Name));
+            if (zip is null) continue;
             return new ReleaseInfo
             {
                 Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt,
-                Files = DlssFiles.Select(f => (f, DlssRawUrl(r.TagName, f), (string?)null)).ToList(),
+                Files = [(zip.Name, zip.Url, zip.Sha256)],
             };
         }
         return null;
@@ -188,7 +220,7 @@ public sealed partial class ComponentStore
     {
         var meta = new CachedComponent { Tag = r.Tag, Prerelease = r.Prerelease, Published = r.Published, Fetched = DateTime.UtcNow };
         File.WriteAllText(Path.Combine(TagDir(c, r.Tag), CompleteMarker), JsonSerializer.Serialize(meta, JsonCtx.Default.CachedComponent));
-        Prune(c, keep: 2);
+        Prune(c, keep: c == Component.Dlss ? 4 : 2);
     }
 
     private static void Prune(Component c, int keep)
@@ -265,35 +297,92 @@ public sealed partial class ComponentStore
         finally { _locks[Component.MfgUnlock].Release(); }
     }
 
-    /// <summary>Returns file name -> cached path for nvngx_dlss / dlssd / dlssg.</summary>
-    public async Task<IReadOnlyDictionary<string, string>> EnsureDlssAsync(IProgress<TransferProgress>? progress, CancellationToken ct)
+    /// <summary>
+    /// Returns file name -> cached path for the nvngx_dlss / dlssd / dlssg files the release has
+    /// (older SDKs ship without RR or FG). <paramref name="tag"/> null means the latest release.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>> EnsureDlssAsync(string? tag, IProgress<TransferProgress>? progress, CancellationToken ct)
     {
-        var r = Dlss ?? throw new InvalidOperationException("DLSS release unknown (offline and nothing cached).");
+        var r = DlssFor(tag) ?? throw new InvalidOperationException("DLSS release unknown (offline and nothing cached).");
         var dir = TagDir(Component.Dlss, r.Tag);
-        var result = DlssFiles.ToDictionary(f => f, f => Path.Combine(dir, f), StringComparer.OrdinalIgnoreCase);
+        IReadOnlyDictionary<string, string> Present() => DlssFiles
+            .Select(f => (Name: f, Path: Path.Combine(dir, f)))
+            .Where(x => File.Exists(x.Path))
+            .ToDictionary(x => x.Name, x => x.Path, StringComparer.OrdinalIgnoreCase);
+
         await _locks[Component.Dlss].WaitAsync(ct);
         try
         {
-            if (IsCached(Component.Dlss, r.Tag)) return result;
+            if (IsCached(Component.Dlss, r.Tag)) return Present();
             if (r.FromCache) throw new InvalidOperationException("Cached DLSS files are incomplete.");
 
             var expected = r.Version;
+            var latest = ReferenceEquals(r, Dlss);
             foreach (var (name, url, _) in r.Files)
             {
-                var dest = result[name];
                 var src = url;
-                if (!await GitHubClient.ExistsAsync(src, ct)) src = DlssRawUrl("main", name);
+                if (!await GitHubClient.ExistsAsync(src, ct))
+                {
+                    if (!latest) continue; // this SDK version has no such file
+                    src = DlssRawUrl("main", name);
+                }
+                var dest = Path.Combine(dir, name);
                 await _gh.DownloadAsync(src, dest, $"{name} {r.Tag}", progress, ct);
 
                 var v = FileUtil.ReadVersion(dest) ?? throw new InvalidDataException($"{name}: not a valid DLL.");
                 if (expected is not null && (v.Major != expected.Major || v.Minor != expected.Minor))
                     Log.Info($"{name}: file version {FileUtil.Format(v)} differs from tag {r.Tag}");
             }
+            if (!File.Exists(Path.Combine(dir, DlssFiles[0])))
+                throw new InvalidDataException($"DLSS {r.Tag}: nvngx_dlss.dll not found in the SDK.");
             MarkComplete(Component.Dlss, r);
             Log.Info($"Cached DLSS {r.Tag}");
-            return result;
+            return Present();
         }
         finally { _locks[Component.Dlss].Release(); }
+    }
+
+    /// <summary>Returns the folder with the signed production sl.*.dll files (bin/x64 of the SDK zip).</summary>
+    public async Task<string> EnsureStreamlineAsync(IProgress<TransferProgress>? progress, CancellationToken ct)
+    {
+        var r = Streamline ?? throw new InvalidOperationException("Streamline release unknown (offline and nothing cached).");
+        var dir = TagDir(Component.Streamline, r.Tag);
+        var bin = Path.Combine(dir, "x64");
+        await _locks[Component.Streamline].WaitAsync(ct);
+        try
+        {
+            if (IsCached(Component.Streamline, r.Tag)) return bin;
+            if (r.FromCache) throw new InvalidOperationException("Cached Streamline files are incomplete.");
+
+            var (name, url, sha) = r.Files[0];
+            var zip = Path.Combine(dir, name);
+            await _gh.DownloadAsync(url, zip, $"Streamline {r.Tag}", progress, ct);
+            progress?.Report(new TransferProgress("Verifying Streamline", null));
+            await VerifyAsync(zip, sha, ct);
+
+            progress?.Report(new TransferProgress("Extracting Streamline", null));
+            await Task.Run(() =>
+            {
+                Directory.CreateDirectory(bin);
+                using var archive = ZipFile.OpenRead(zip);
+                foreach (var e in archive.Entries)
+                {
+                    // Signed production runtime only; bin/x64/development holds unsigned debug builds.
+                    var n = e.FullName.Replace('\\', '/');
+                    if (!n.StartsWith("bin/x64/", StringComparison.OrdinalIgnoreCase) || n.Count(c => c == '/') != 2) continue;
+                    if (!e.Name.StartsWith("sl.", StringComparison.OrdinalIgnoreCase) || !e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) continue;
+                    e.ExtractToFile(Path.Combine(bin, e.Name), true);
+                }
+            }, ct);
+            File.Delete(zip);
+            if (!File.Exists(Path.Combine(bin, "sl.interposer.dll")))
+                throw new InvalidDataException("sl.interposer.dll missing from the Streamline SDK.");
+
+            MarkComplete(Component.Streamline, r);
+            Log.Info($"Cached Streamline {r.Tag}");
+            return bin;
+        }
+        finally { _locks[Component.Streamline].Release(); }
     }
 
     private static async Task VerifyAsync(string file, string? sha256, CancellationToken ct)

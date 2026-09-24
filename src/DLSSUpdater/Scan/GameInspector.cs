@@ -47,7 +47,7 @@ public static partial class GameInspector
         ["vgk.sys"] = "Vanguard",
     };
 
-    private enum HitKind { None, Exe, Dlss, AntiCheat, Manifest }
+    private enum HitKind { None, Exe, Dlss, Streamline, AntiCheat, Manifest }
 
     private readonly record struct Hit(HitKind Kind, string Path, long Size, string? Tag);
 
@@ -76,6 +76,7 @@ public static partial class GameInspector
 
         var exes = new List<(string Path, long Size)>();
         game.Dlss = [];
+        game.Streamline = [];
         game.Installs = [];
         game.AntiCheat = null;
 
@@ -87,6 +88,9 @@ public static partial class GameInspector
                 case HitKind.Dlss:
                     game.Dlss.Add(new DlssDll { Path = h.Path, Name = Path.GetFileName(h.Path), Version = FileUtil.ReadVersion(h.Path) });
                     break;
+                case HitKind.Streamline:
+                    game.Streamline.Add(new DlssDll { Path = h.Path, Name = Path.GetFileName(h.Path), Version = FileUtil.ReadVersion(h.Path) });
+                    break;
                 case HitKind.AntiCheat: game.AntiCheat ??= h.Tag; break;
                 case HitKind.Manifest:
                     var dir = Path.GetDirectoryName(h.Path)!;
@@ -96,6 +100,7 @@ public static partial class GameInspector
         }
 
         game.Dlss = game.Dlss.OrderBy(d => d.Path, StringComparer.OrdinalIgnoreCase).ToList();
+        game.Streamline = game.Streamline.OrderBy(d => d.Path, StringComparer.OrdinalIgnoreCase).ToList();
         game.Exes = RankExes(root, exes, game.Name);
         game.Scanned = DateTime.UtcNow;
     }
@@ -121,6 +126,9 @@ public static partial class GameInspector
                 if (name.Equals(d, StringComparison.OrdinalIgnoreCase)) return (HitKind.Dlss, null);
             return (HitKind.None, null);
         }
+
+        if (name.StartsWith("sl.", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            return (HitKind.Streamline, null);
 
         var ext = Path.GetExtension(name);
         var interestingExt = ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||

@@ -34,8 +34,14 @@ public sealed class InstallManifest
     public string? OptiTag { get; set; }
     public string? MfgTag { get; set; }
     public string? DlssTag { get; set; }
+    public bool DlssPinned { get; set; }
     public string? DlssNrSha { get; set; }
     public string? ReShadeSha { get; set; }
+    public string? StreamlineTag { get; set; }
+    public bool Streamline { get; set; }
+    /// <summary>Values we wrote into OptiScaler.ini / ReShade.ini last time, keyed "Section/Key".</summary>
+    public Dictionary<string, string> OptiIni { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> ReShadeIni { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool AntiCheatConfirmed { get; set; }
 
     /// <summary>Files we placed, relative to the game root.</summary>

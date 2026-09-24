@@ -59,6 +59,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _progressVisible;
     [ObservableProperty] private bool _settingsOpen;
     [ObservableProperty] private bool _logOpen;
+    [ObservableProperty] private bool _aboutOpen;
+    [ObservableProperty] private string _streamlineVersion = "—";
+
+    public string AppVersion => "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUpdates))]
     private int _updateCount;
@@ -86,12 +90,22 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (value)
         {
+            AboutOpen = false;
             SettingsVm.Reload();
             return;
         }
         SettingsVm.Commit();
-        foreach (var g in Games) g.RefreshStatus();
+        foreach (var g in Games)
+        {
+            g.RebuildDlssChoices();
+            g.RefreshStatus();
+        }
         CountUpdates();
+    }
+
+    partial void OnAboutOpenChanged(bool value)
+    {
+        if (value && SettingsOpen) SettingsOpen = false;
     }
     partial void OnFilterChanged(string value) => GamesView.Refresh();
 
@@ -156,7 +170,12 @@ public sealed partial class MainViewModel : ObservableObject
         OptiVersion = s.Opti is null ? "—" : s.Opti.Tag + (s.Opti.Prerelease ? " pre" : "");
         DlssVersion = s.Dlss?.Tag.TrimStart('v') ?? "—";
         MfgVersion = s.Mfg?.Tag ?? (File.Exists(Path.Combine(AppPaths.Components, ComponentStore.MfgFile)) ? "local" : "—");
-        foreach (var g in Games) g.RefreshStatus();
+        StreamlineVersion = s.Streamline?.Tag.TrimStart('v') ?? "—";
+        foreach (var g in Games)
+        {
+            g.RebuildDlssChoices();
+            g.RefreshStatus();
+        }
         CountUpdates();
         Log.Info($"Latest: OptiScaler-NR {OptiVersion} · DLSS {DlssVersion} · MFG Unlock {MfgVersion}{(Online ? "" : " (offline)")}");
     }
@@ -263,6 +282,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleLog() => LogOpen = !LogOpen;
+
+    [RelayCommand]
+    private void ToggleAbout() => AboutOpen = !AboutOpen;
+
+    [RelayCommand]
+    private static void OpenUrl(string url)
+    {
+        if (url.StartsWith("https://", StringComparison.Ordinal))
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
 
     [RelayCommand]
     private void Cancel()
