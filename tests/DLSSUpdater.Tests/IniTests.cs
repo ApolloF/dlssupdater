@@ -4,7 +4,8 @@ namespace DLSSUpdater.Tests;
 
 public class IniTests
 {
-    private const string Release = """
+    // Normalized so the fixture is LF regardless of how git checked the file out.
+    private static readonly string Release = """
         ; -------------------------------------------------------
         [Upscalers]
         ; comment
@@ -19,7 +20,7 @@ public class IniTests
         ; Comment that belongs to the next section
         [Plugins]
         LoadReshade=auto
-        """;
+        """.ReplaceLineEndings("\n");
 
     [Fact]
     public void Set_ReplacesValue_KeepsCommentsAndSpacing()
