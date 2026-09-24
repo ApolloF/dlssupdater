@@ -1,0 +1,594 @@
+<Window x:Class="DLSSUpdater.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:DLSSUpdater.ViewModels"
+        xmlns:core="clr-namespace:DLSSUpdater.Core"
+        Title="DLSS Updater" Width="1240" Height="800" MinWidth="980" MinHeight="600"
+        WindowStartupLocation="CenterScreen" Icon="Assets/icon.ico"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- Component chip in the header strip -->
+        <Style x:Key="ChipValue" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource Caps}">
+            <Setter Property="Margin" Value="0,28,0,10" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid" Background="{StaticResource Bg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="32" />
+        </Grid.RowDefinitions>
+
+        <!-- ============ Title bar ============ -->
+        <Grid Grid.Row="0" Background="{StaticResource Bg}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                <Border Width="4" Height="18" Background="{StaticResource Accent}" Margin="0,0,10,0" />
+                <TextBlock Text="DLSS" FontFamily="{StaticResource DisplayFont}" FontWeight="Bold" FontSize="14" />
+                <TextBlock Text="UPDATER" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="14"
+                           Foreground="{StaticResource Muted}" Margin="6,0,0,0" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource CaptionBtn}" Content="&#xE713;" FontSize="13" ToolTip="Settings"
+                        Command="{Binding ToggleSettingsCommand}" />
+                <Button Style="{StaticResource CaptionBtn}" Content="&#xE921;" Click="OnMinimize" />
+                <Button x:Name="MaxButton" Style="{StaticResource CaptionBtn}" Content="&#xE922;" Click="OnMaximize" />
+                <Button Style="{StaticResource CaptionClose}" Content="&#xE8BB;" Click="OnClose" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ============ Component strip ============ -->
+        <Border Grid.Row="1" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Background="{StaticResource Surface}">
+            <Grid Margin="18,12,18,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel Margin="0,0,28,0">
+                        <TextBlock Text="OPTISCALER-NR" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding OptiVersion}" Style="{StaticResource ChipValue}" />
+                    </StackPanel>
+                    <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
+                    <StackPanel Margin="0,0,28,0">
+                        <TextBlock Text="DLSS" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding DlssVersion}" Style="{StaticResource ChipValue}" />
+                    </StackPanel>
+                    <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
+                    <StackPanel Margin="0,0,28,0">
+                        <TextBlock Text="MFG UNLOCK" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding MfgVersion}" Style="{StaticResource ChipValue}" />
+                    </StackPanel>
+                    <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
+                    <StackPanel Margin="0,0,28,0">
+                        <TextBlock Text="DLSSNR" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding DlssNrText}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ChipValue}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DlssNrOk}" Value="False">
+                                            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
+                    <StackPanel>
+                        <TextBlock Text="RESHADE" Style="{StaticResource Caps}" />
+                        <TextBlock Text="{Binding ReShadeText}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ChipValue}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ReShadeOk}" Value="False">
+                                            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="OFFLINE" Style="{StaticResource Caps}" Foreground="{StaticResource Warn}" VerticalAlignment="Center"
+                               Margin="0,0,14,0" Visibility="{Binding Online, Converter={StaticResource InvBoolToVis}}" />
+                    <Button Command="{Binding CheckUpdatesCommand}" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" Margin="0,0,8,0" />
+                            <TextBlock Text="Check updates" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding UpdateAllCommand}" Style="{StaticResource BtnPrimary}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Margin="0,0,8,0" />
+                            <TextBlock Text="Update all" />
+                            <Border Background="#0B0B0B" CornerRadius="2" Padding="5,0" Margin="8,0,0,0"
+                                    Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding UpdateCount}" Foreground="{StaticResource Accent}" FontSize="11" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============ Content ============ -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Game list -->
+            <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="16,16,16,10">
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Tag="Search games" Padding="28,7,8,7" />
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource Dim}" Margin="10,0,0,0"
+                                   HorizontalAlignment="Left" IsHitTestVisible="False" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="16,0,16,0">
+                        <Border Style="{StaticResource Divider}" VerticalAlignment="Bottom" />
+                        <UniformGrid Rows="1">
+                            <RadioButton Style="{StaticResource Segment}" Content="All" GroupName="f"
+                                         IsChecked="{Binding Filter, Converter={StaticResource EqualsToBool}, ConverterParameter=All}" />
+                            <RadioButton Style="{StaticResource Segment}" Content="DLSS" GroupName="f"
+                                         IsChecked="{Binding Filter, Converter={StaticResource EqualsToBool}, ConverterParameter=DLSS}" />
+                            <RadioButton Style="{StaticResource Segment}" Content="Installed" GroupName="f"
+                                         IsChecked="{Binding Filter, Converter={StaticResource EqualsToBool}, ConverterParameter=Installed}" />
+                            <RadioButton Style="{StaticResource Segment}" Content="Updates" GroupName="f"
+                                         IsChecked="{Binding Filter, Converter={StaticResource EqualsToBool}, ConverterParameter=Updates}" />
+                        </UniformGrid>
+                    </Grid>
+
+                    <ListBox Grid.Row="2" Margin="0,6,0,0" Style="{StaticResource GameList}" ItemContainerStyle="{StaticResource GameItem}"
+                             ItemsSource="{Binding GamesView}" SelectedItem="{Binding SelectedGame}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:GameViewModel}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <Ellipse Grid.Column="1" Width="6" Height="6" Fill="{StaticResource Warn}" VerticalAlignment="Center"
+                                             ToolTip="Update available" Visibility="{Binding NeedsUpdate, Converter={StaticResource BoolToVis}}" />
+                                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,5,0,0">
+                                        <TextBlock Text="{Binding Source}" FontSize="11" Foreground="{StaticResource Dim}" Width="52" VerticalAlignment="Center" />
+                                        <Border Visibility="{Binding HasDlss, Converter={StaticResource BoolToVis}}">
+                                            <Border.Style>
+                                                <Style TargetType="Border" BasedOn="{StaticResource Badge}">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DlssCurrent}" Value="True">
+                                                            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding DlssBadge}" Style="{StaticResource BadgeText}" />
+                                        </Border>
+                                        <Border Style="{StaticResource Badge}" Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}"
+                                                Visibility="{Binding IsOptiInstalled, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="OPTI" Style="{StaticResource BadgeText}" Foreground="#0B0B0B" />
+                                        </Border>
+                                        <Border Style="{StaticResource Badge}" BorderBrush="{StaticResource Danger}"
+                                                Visibility="{Binding HasAntiCheat, Converter={StaticResource BoolToVis}}" ToolTip="{Binding AntiCheat}">
+                                            <TextBlock Text="AC" Style="{StaticResource BadgeText}" Foreground="{StaticResource Danger}" />
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Grid.Row="3" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="10,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding AddGameFolderCommand}" ToolTip="Add a single game folder">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                    <TextBlock Text="Game" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding AddLibraryRootCommand}" ToolTip="Add a folder whose subfolders are games">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                    <TextBlock Text="Library" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding RescanCommand}" ToolTip="Rescan all folders">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                    <TextBlock Text="Rescan" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Detail -->
+            <TextBlock Grid.Column="1" Text="Select a game" Foreground="{StaticResource Dim}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="{Binding SelectedGame, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" DataContext="{Binding SelectedGame}"
+                          Visibility="{Binding Converter={StaticResource NullToVis}}">
+                <StackPanel Margin="36,28,36,36" MaxWidth="980" HorizontalAlignment="Stretch">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource H1}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Border Style="{StaticResource Badge}">
+                                    <TextBlock Text="{Binding Source}" Style="{StaticResource BadgeText}" />
+                                </Border>
+                                <TextBlock Text="{Binding Root}" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button Style="{StaticResource BtnIcon}" Content="&#xE838;" ToolTip="Open folder"
+                                    Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Button Style="{StaticResource BtnIcon}" Content="&#xE74D;" ToolTip="Remove from list"
+                                    Command="{Binding DataContext.RemoveGameCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Anti-cheat warning -->
+                    <Border Margin="0,20,0,0" Background="{StaticResource DangerSoft}" BorderBrush="{StaticResource Danger}" BorderThickness="2,0,0,0"
+                            Padding="14,10" Visibility="{Binding HasAntiCheat, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Danger}" Margin="0,0,10,0" />
+                            <TextBlock TextWrapping="Wrap">
+                                <Run Text="{Binding AntiCheat, Mode=OneWay}" FontWeight="SemiBold" />
+                                <Run Text=" detected. Injecting DLLs can get you banned in online modes. DLSS-only swaps are safe." Foreground="{StaticResource Muted}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Target -->
+                    <TextBlock Text="INSTALL LOCATION" Style="{StaticResource SectionTitle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="150" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}" />
+                        <Button Grid.Column="1" Style="{StaticResource BtnIcon}" Content="&#xE8DA;" Margin="6,0,12,0" ToolTip="Choose folder"
+                                Command="{Binding DataContext.BrowseTargetCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding Proxy}" ToolTip="OptiScaler proxy DLL name" />
+                    </Grid>
+                    <TextBlock Text="Files go next to the game executable. Proxy is the name OptiScaler is loaded as."
+                               Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,8,0,0" />
+
+                    <!-- Components -->
+                    <TextBlock Text="COMPONENTS" Style="{StaticResource SectionTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Margin="16,10,16,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="46" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="1" Text="COMPONENT" Style="{StaticResource Caps}" />
+                                <TextBlock Grid.Column="2" Text="INSTALLED" Style="{StaticResource Caps}" />
+                                <TextBlock Grid.Column="3" Text="LATEST" Style="{StaticResource Caps}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <ItemsControl ItemsSource="{Binding Components}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:ComponentRow}">
+                                        <Grid Margin="16,9">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="18" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="46" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="7" Height="7" HorizontalAlignment="Left" Fill="{Binding State, Converter={StaticResource StateToBrush}}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Installed}" Style="{StaticResource Mono}" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="{Binding Latest}" Style="{StaticResource Mono}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <CheckBox Grid.Column="4" IsChecked="{Binding Enabled}" HorizontalAlignment="Right" ToolTip="Include in install" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- DLSS files -->
+                    <TextBlock Text="DLSS FILES" Style="{StaticResource SectionTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <ItemsControl ItemsSource="{Binding DlssRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:DlssRow}">
+                                        <Grid Margin="16,9">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="18" />
+                                                <ColumnDefinition Width="40" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="7" Height="7" HorizontalAlignment="Left" Fill="{Binding State, Converter={StaticResource StateToBrush}}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Style="{StaticResource Caps}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding RelPath}" Style="{StaticResource Mono}" Foreground="{StaticResource Muted}"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding RelPath}" />
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="16,0,0,0">
+                                                <TextBlock Text="{Binding Current}" Style="{StaticResource Mono}" />
+                                                <TextBlock Text="&#xE72A;" Style="{StaticResource Icon}" FontSize="10" Foreground="{StaticResource Dim}" Margin="10,0" />
+                                                <TextBlock Text="{Binding Latest}" Style="{StaticResource Mono}" Foreground="{StaticResource Accent}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Margin="16,12" Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                                       Text="No DLSS files in this game. OptiScaler install adds nvngx_dlss.dll next to the executable."
+                                       Visibility="{Binding HasDlss, Converter={StaticResource InvBoolToVis}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Actions -->
+                    <Grid Margin="0,28,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource BtnPrimary}" Padding="22,9" MinWidth="130"
+                                    Command="{Binding DataContext.InstallCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    IsEnabled="{Binding AnyEnabled}">
+                                <TextBlock Text="{Binding ActionText}" />
+                            </Button>
+                            <Button Content="DLSS only" Margin="8,0,0,0" Padding="16,9" ToolTip="Swap DLSS dlls only, no injection"
+                                    Command="{Binding DataContext.DlssOnlyCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button Content="Restore DLSS" Style="{StaticResource BtnGhost}" Margin="0,0,8,0"
+                                    Command="{Binding DataContext.RestoreDlssCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Button Content="Uninstall" Style="{StaticResource BtnDanger}" Padding="16,9"
+                                    Command="{Binding DataContext.UninstallCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Settings overlay -->
+            <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding SettingsOpen, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding SettingsVm}">
+                    <StackPanel Margin="36,28,36,36" MaxWidth="860">
+                        <Grid>
+                            <TextBlock Text="Settings" Style="{StaticResource H1}" />
+                            <Button Style="{StaticResource BtnIcon}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="Close"
+                                    Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </Grid>
+
+                        <TextBlock Text="LOCAL COMPONENTS" Style="{StaticResource SectionTitle}" />
+                        <Border Style="{StaticResource Card}" Padding="16,4">
+                            <StackPanel>
+                                <Grid Margin="0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="nvngx_dlssnr.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DlssNrInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="Import…" Command="{Binding ImportDlssNrCommand}" Margin="12,0,0,0" />
+                                </Grid>
+                                <Border Style="{StaticResource Divider}" />
+                                <Grid Margin="0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="ReShade64.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ReShadeInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="Import…" Command="{Binding ImportReShadeCommand}" Margin="12,0,0,0" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="These aren't redistributable, so they're imported once and kept in the app's data folder. Use the ReShade build with full add-on support."
+                                   Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                        <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />
+                        <Border Style="{StaticResource Card}" Padding="16,6">
+                            <StackPanel>
+                                <Grid Margin="0,8">
+                                    <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />
+                                    <ComboBox Width="150" HorizontalAlignment="Right" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding DefaultProxy}" />
+                                </Grid>
+                                <CheckBox Content="Include prereleases" IsChecked="{Binding IncludePrereleases}" Margin="0,8" />
+                                <CheckBox Content="Install ReShade" IsChecked="{Binding InstallReShade}" Margin="0,8" />
+                                <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
+                                <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
+                                <CheckBox Content="Add nvngx_dlss.dll to games that ship without it" IsChecked="{Binding AddMissingDlss}" Margin="0,8" />
+                                <CheckBox Content="Keep each game's own OptiScaler.ini changes when updating" IsChecked="{Binding CarryOverGameIni}" Margin="0,8" />
+                            </StackPanel>
+                        </Border>
+
+                        <Grid>
+                            <TextBlock Text="OPTISCALER.INI OVERRIDES" Style="{StaticResource SectionTitle}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4">
+                                <Button Content="Reset" Style="{StaticResource BtnGhost}" Command="{Binding ResetOverridesCommand}" />
+                                <Button Style="{StaticResource BtnGhost}" Command="{Binding AddOverrideCommand}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0" />
+                                        <TextBlock Text="Add" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                        <Border Style="{StaticResource Card}" Padding="16,10">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="36" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="SECTION" Style="{StaticResource Caps}" />
+                                    <TextBlock Grid.Column="1" Text="KEY" Style="{StaticResource Caps}" Margin="8,0,0,0" />
+                                    <TextBlock Grid.Column="2" Text="VALUE" Style="{StaticResource Caps}" Margin="8,0,0,0" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding Overrides}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type core:IniOverride}">
+                                            <Grid Margin="0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="140" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="160" />
+                                                    <ColumnDefinition Width="36" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding Section}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" />
+                                                <TextBox Grid.Column="1" Text="{Binding Key}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
+                                                <TextBox Grid.Column="2" Text="{Binding Value}" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="6,4" Margin="8,0,0,0" />
+                                                <Button Grid.Column="3" Style="{StaticResource BtnIcon}" Content="&#xE711;" HorizontalAlignment="Right"
+                                                        Command="{Binding DataContext.RemoveOverrideCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="Applied on top of each release's OptiScaler.ini on every install and update. 0x2e = Delete key for the overlay menu." />
+
+                        <TextBlock Text="GAME FOLDERS" Style="{StaticResource SectionTitle}" />
+                        <Border Style="{StaticResource Card}" Padding="16,6">
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding Folders}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:FolderEntry}">
+                                            <Grid Margin="0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="70" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Kind}" Style="{StaticResource Caps}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Path}" Style="{StaticResource Mono}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <Button Grid.Column="2" Style="{StaticResource BtnIcon}" Content="&#xE711;"
+                                                        Command="{Binding DataContext.RemoveFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="Steam, Epic, GOG, EA, Ubisoft and Xbox games are found automatically." Style="{StaticResource MutedText}"
+                                           FontSize="12" Margin="0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                    <Button Content="Add game folder" Margin="0,0,8,0"
+                                            Command="{Binding DataContext.AddGameFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                    <Button Content="Add library folder" Margin="0,0,8,0"
+                                            Command="{Binding DataContext.AddLibraryRootCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                    <Button Content="Show hidden games" Style="{StaticResource BtnGhost}" Command="{Binding ShowHiddenCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="GITHUB" Style="{StaticResource SectionTitle}" />
+                        <TextBox Text="{Binding GitHubToken, UpdateSourceTrigger=LostFocus}" Tag="Personal access token (optional, raises the API rate limit)" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
+                            <Button Content="Open data folder" Style="{StaticResource BtnGhost}" Command="{Binding OpenDataFolderCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- ============ Log ============ -->
+        <Border Grid.Row="3" Height="170" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                Visibility="{Binding LogOpen, Converter={StaticResource BoolToVis}}">
+            <ListBox x:Name="LogList" ItemsSource="{Binding LogLines}" Background="Transparent" BorderThickness="0" Padding="12,6"
+                     Foreground="{StaticResource Muted}" FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                     VirtualizingPanel.IsVirtualizing="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,1" />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </Border>
+
+        <!-- ============ Status bar ============ -->
+        <Grid Grid.Row="4" Background="{StaticResource Surface}">
+            <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" />
+            <ProgressBar VerticalAlignment="Top" Value="{Binding Progress}" Maximum="1" IsIndeterminate="{Binding ProgressIndeterminate}"
+                         Visibility="{Binding ProgressVisible, Converter={StaticResource BoolToVis}}" />
+            <Grid Margin="18,0,8,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding LastLog}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="24,0,12,0" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Content="Cancel" Style="{StaticResource BtnGhost}" Padding="10,3" Command="{Binding CancelCommand}"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource BtnGhost}" Padding="10,3" Command="{Binding ToggleLogCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Log" FontSize="12" />
+                            <TextBlock Text="&#xE70E;" Style="{StaticResource Icon}" FontSize="9" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,181 @@
+using DLSSUpdater.Core;
+using DLSSUpdater.Scan;
+
+namespace DLSSUpdater.Tests;
+
+public class InstallerTests : IDisposable
+{
+    private readonly string _tmp = Path.Combine(Path.GetTempPath(), "dlssu-inst-" + Guid.NewGuid().ToString("N")[..8]);
+    private readonly string _root;
+    private readonly string _target;
+    private readonly ComponentStore _store;
+
+    private const string ReleaseIni = "[Menu]\nShortcutKey=auto\n[Plugins]\nLoadReshade=auto\n[Hotfix]\nManualInputPolling=auto\n";
+
+    public InstallerTests()
+    {
+        AppPaths.Root = Path.Combine(_tmp, "appdata");
+        AppPaths.Ensure();
+        _root = Path.Combine(_tmp, "Game");
+        _target = Path.Combine(_root, @"Game\Binaries\Win64");
+        _store = new ComponentStore(new GitHubClient(), () => true);
+
+        SeedOpti("v9.9.9", "OPTI-1");
+        SeedMfg("1.0", "MFG-1");
+        SeedDlss("v310.9.1", "NEW");
+        Write(Path.Combine(AppPaths.Components, ComponentStore.DlssNrFile), "NR");
+        Write(Path.Combine(AppPaths.Components, ComponentStore.ReShadeFile), "RESHADE");
+
+        // A game that already has another mod's dxgi.dll, a hand-edited ini and old DLSS dlls.
+        Write(Path.Combine(_target, "Game-Win64-Shipping.exe"), "EXE");
+        Write(Path.Combine(_root, "Game.exe"), "BOOT");
+        Write(Path.Combine(_target, "dxgi.dll"), "OTHER-MOD");
+        Write(Path.Combine(_target, "OptiScaler.ini"), "[Hotfix]\nManualInputPolling=true\n");
+        Write(Path.Combine(_target, "nvngx.dll_dlssnr.dll"), "LEGACY");
+        Write(Path.Combine(_target, "nvngx_dlssg.dll"), "OLD-FG");
+        Write(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"), "OLD-SR");
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_tmp, true); } catch (IOException) { }
+    }
+
+    private static void Write(string path, string content)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+    }
+
+    private void SeedOpti(string tag, string content)
+    {
+        var pkg = Path.Combine(ComponentStore.TagDir(Component.OptiScaler, tag), "pkg");
+        Write(Path.Combine(pkg, "OptiScaler.dll"), content);
+        Write(Path.Combine(pkg, "OptiScaler.ini"), ReleaseIni);
+        Write(Path.Combine(pkg, @"OptiScaler\libxess.dll"), "XESS");
+        Write(Path.Combine(pkg, @"OptiScaler\dlssnr\README.md"), "doc");
+        Write(Path.Combine(pkg, @"Licenses\XeSS_LICENSE.txt"), "lic");
+        Write(Path.Combine(pkg, "setup_windows.bat"), "bat");
+        var r = new ReleaseInfo { Tag = tag };
+        ComponentStore.MarkComplete(Component.OptiScaler, r);
+        _store.Opti = r;
+    }
+
+    private void SeedMfg(string tag, string content)
+    {
+        Write(Path.Combine(ComponentStore.TagDir(Component.MfgUnlock, tag), ComponentStore.MfgFile), content);
+        var r = new ReleaseInfo { Tag = tag };
+        ComponentStore.MarkComplete(Component.MfgUnlock, r);
+        _store.Mfg = r;
+    }
+
+    private void SeedDlss(string tag, string content)
+    {
+        foreach (var f in ComponentStore.DlssFiles)
+            Write(Path.Combine(ComponentStore.TagDir(Component.Dlss, tag), f), $"{content}-{f}");
+        var r = new ReleaseInfo { Tag = tag };
+        ComponentStore.MarkComplete(Component.Dlss, r);
+        _store.Dlss = r;
+    }
+
+    private Dictionary<string, string> Snapshot() =>
+        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => Path.GetRelativePath(_root, f), File.ReadAllText, StringComparer.OrdinalIgnoreCase);
+
+    private GameInfo Game() => GameScanner.Inspect(new GameEntry("Game", _root, "Manual"));
+
+    private static InstallOptions Full => new()
+    {
+        Opti = true, ReShade = true, Mfg = true, DlssNr = true, Dlss = true, AddMissingDlss = true,
+        Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = true,
+    };
+
+    private string T(string rel) => File.ReadAllText(Path.Combine(_target, rel));
+
+    [Fact]
+    public void Scan_PicksShippingDirAsTarget()
+    {
+        var g = Game();
+        Assert.Equal(_target, Path.GetDirectoryName(g.Exes[0]));
+        Assert.Equal(2, g.Dlss.Count);
+    }
+
+    [Fact]
+    public async Task Install_Update_Uninstall_RoundTrip()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+
+        Assert.Equal("OPTI-1", T("dxgi.dll"));
+        Assert.Equal("RESHADE", T("ReShade64.dll"));
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("NR", T("nvngx_dlssnr.dll"));
+        Assert.Equal("XESS", T(@"OptiScaler\libxess.dll"));
+        Assert.False(File.Exists(Path.Combine(_target, @"OptiScaler\dlssnr\README.md")));
+        Assert.False(File.Exists(Path.Combine(_target, "setup_windows.bat")));
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx.dll_dlssnr.dll")));
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+        Assert.Equal("NEW-nvngx_dlss.dll", File.ReadAllText(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll")));
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll"))); // game already ships SR
+
+        var ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
+        Assert.Equal("true", ini.Get("Plugins", "LoadReshade"));
+        Assert.Equal("0x2e", ini.Get("Menu", "ShortcutKey"));
+        Assert.Equal("true", ini.Get("Hotfix", "ManualInputPolling"));
+
+        var m = InstallManifest.Load(_target)!;
+        Assert.Equal("v9.9.9", m.OptiTag);
+        Assert.Equal("v310.9.1", m.DlssTag);
+
+        // New releases arrive: reinstall must replace our files without clobbering the original backups.
+        SeedOpti("v10.0.0", "OPTI-2");
+        SeedDlss("v310.10.0", "NEWER");
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("OPTI-2", T("dxgi.dll"));
+        Assert.Equal("NEWER-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+
+        // A game patch reverts FG to a new original: that one becomes the backup.
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "PATCHED-FG");
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("NEWER-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+
+        var after = Snapshot();
+        var expected = new Dictionary<string, string>(before, StringComparer.OrdinalIgnoreCase)
+        {
+            [Path.Combine(@"Game\Binaries\Win64", "nvngx_dlssg.dll")] = "PATCHED-FG",
+        };
+        Assert.Equal(expected.OrderBy(k => k.Key), after.OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(Path.Combine(_target, "OptiScaler")));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(_target)));
+    }
+
+    [Fact]
+    public async Task DlssOnly_ThenRestore_ReturnsOriginals()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+
+        Assert.Equal("OTHER-MOD", T("dxgi.dll"));
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task AddsSrWhenGameHasNone()
+    {
+        File.Delete(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"));
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("NEW-nvngx_dlss.dll", T("nvngx_dlss.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));
+    }
+}

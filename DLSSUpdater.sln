@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D83CE67E-C0CB-4EA9-B2AA-8C84D95C4C24}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DLSSUpdater", "src\DLSSUpdater\DLSSUpdater.csproj", "{6011BBE4-1AFC-4535-A916-970022448CD1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{95FFDDC8-5589-4BB5-8386-A662B409C6C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DLSSUpdater.Tests", "tests\DLSSUpdater.Tests\DLSSUpdater.Tests.csproj", "{BBECED02-6DD4-4A59-9CF7-43E91E17B78B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6011BBE4-1AFC-4535-A916-970022448CD1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6011BBE4-1AFC-4535-A916-970022448CD1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6011BBE4-1AFC-4535-A916-970022448CD1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6011BBE4-1AFC-4535-A916-970022448CD1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBECED02-6DD4-4A59-9CF7-43E91E17B78B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBECED02-6DD4-4A59-9CF7-43E91E17B78B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBECED02-6DD4-4A59-9CF7-43E91E17B78B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBECED02-6DD4-4A59-9CF7-43E91E17B78B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6011BBE4-1AFC-4535-A916-970022448CD1} = {D83CE67E-C0CB-4EA9-B2AA-8C84D95C4C24}
+		{BBECED02-6DD4-4A59-9CF7-43E91E17B78B} = {95FFDDC8-5589-4BB5-8386-A662B409C6C2}
+	EndGlobalSection
+EndGlobal

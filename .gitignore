@@ -1,0 +1,13 @@
+bin/
+obj/
+publish/
+.vs/
+*.user
+TestResults/
+
+# Third-party binaries are never committed (size + redistribution terms).
+*.dll
+*.addon64
+*.exe
+*.zip
+/OptiScaler.ini
