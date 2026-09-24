@@ -269,6 +269,31 @@ public class InstallerTests : IDisposable
         Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
     }
 
+    [Theory]
+    [InlineData(true, false, "0x24", "true")]   // keep: game values stay
+    [InlineData(true, true, "0x2e", "true")]    // apply: profile wins, other game keys stay
+    [InlineData(false, false, "0x2e", null)]    // fresh: only release + profile
+    public async Task IniModes(bool carryOver, bool overwrite, string menuKey, string? polling)
+    {
+        Write(Path.Combine(_target, "OptiScaler.ini"), "[Menu]\nShortcutKey=0x24\n[Hotfix]\nManualInputPolling=true\n");
+        var o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = carryOver, OverwriteIni = overwrite };
+        await new Installer(_store).InstallAsync(Game(), _target, o, null, default);
+
+        var ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
+        Assert.Equal(menuKey, ini.Get("Menu", "ShortcutKey"));
+        Assert.Equal(polling ?? "auto", ini.Get("Hotfix", "ManualInputPolling"));
+    }
+
+    [Fact]
+    public void Option_MatchesNumbersByValue()
+    {
+        var list = new System.Collections.ObjectModel.ObservableCollection<IniOverride> { new("DlssNr", "LocalStructure", "0.7") };
+        var opt = ViewModels.SettingsOptions.Nr(list).First(x => x.Key == "LocalStructure");
+        Assert.Equal("0.7", opt.Selected.Label);
+        opt.Selected = opt.Choices.First(c => c.Label == "0.5");
+        Assert.Equal("0.500000", list.Single().Value);
+    }
+
     [Fact]
     public async Task AddsSrWhenGameHasNone()
     {

@@ -28,7 +28,10 @@ public sealed class AppSettings
     public bool InstallMfgUnlock { get; set; } = true;
     public bool InstallDlssNr { get; set; } = true;
     public bool AddMissingDlss { get; set; } = true;
+    /// <summary>Legacy (1.0/1.1); false maps to IniMode "fresh".</summary>
     public bool CarryOverGameIni { get; set; } = true;
+    /// <summary>keep | apply | fresh — how existing game configs are treated.</summary>
+    public string IniMode { get; set; } = "keep";
     public string? GitHubToken { get; set; }
     public List<IniOverride> IniOverrides { get; set; } = ConfigProfile.Defaults();
     public List<IniOverride> ReShadeOverrides { get; set; } = ConfigProfile.ReShadeDefaults();
@@ -52,6 +55,8 @@ public sealed class AppSettings
                 if (s is not null)
                 {
                     s.Games = new Dictionary<string, GameOverride>(s.Games, StringComparer.OrdinalIgnoreCase);
+                    if (!s.CarryOverGameIni && s.IniMode == "keep") s.IniMode = "fresh";
+                    s.CarryOverGameIni = true;
                     return s;
                 }
             }

@@ -5,7 +5,7 @@ using DLSSUpdater.Core;
 namespace DLSSUpdater.ViewModels;
 
 /// <summary>A labelled value; Value null means "leave the key alone" (no override).</summary>
-public sealed record OptionChoice(string Label, string? Value)
+public sealed record OptionChoice(string Label, string? Value, string? Description = null)
 {
     public override string ToString() => Label;
 }
@@ -47,6 +47,16 @@ public sealed partial class IniOptionViewModel : ObservableObject
     public OptionChoice[] Choices { get; }
     public bool IsToggle => Choices.Length == 2 && Choices[0].Value is null && Choices[1].Label == "On";
 
+    /// <summary>Choices plus the current value when it isn't one of them (e.g. typed in Advanced).</summary>
+    public IReadOnlyList<OptionChoice> DisplayChoices
+    {
+        get
+        {
+            var sel = Selected;
+            return Choices.Contains(sel) ? Choices : [.. Choices, sel];
+        }
+    }
+
     private IniOverride? Entry => _list.FirstOrDefault(o =>
         o.Section.Equals(Section, StringComparison.OrdinalIgnoreCase) && o.Key.Equals(Key, StringComparison.OrdinalIgnoreCase));
 
@@ -55,13 +65,14 @@ public sealed partial class IniOptionViewModel : ObservableObject
         get
         {
             var v = Entry?.Value;
-            return Choices.FirstOrDefault(c => string.Equals(c.Value, v, StringComparison.OrdinalIgnoreCase))
-                   ?? (v is null ? Choices[0] : new OptionChoice(v, v));
+            return Choices.FirstOrDefault(c => Same(c.Value, v))
+                   ?? (v is null ? Choices[0] : new OptionChoice($"{v} (custom)", v, "Set in the Advanced tab."));
         }
         set
         {
+            if (value is null) return;
             var e = Entry;
-            if (value?.Value is null)
+            if (value.Value is null)
             {
                 if (e is not null) _list.Remove(e);
             }
@@ -70,6 +81,16 @@ public sealed partial class IniOptionViewModel : ObservableObject
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsOn));
         }
+    }
+
+    /// <summary>Numbers compare by value so "0.7" matches "0.700000" as OptiScaler writes it.</summary>
+    private static bool Same(string? a, string? b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
+        return a is not null && b is not null
+               && double.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)
+               && double.TryParse(b, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y)
+               && Math.Abs(x - y) < 1e-6;
     }
 
     public bool IsOn
@@ -82,5 +103,6 @@ public sealed partial class IniOptionViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Selected));
         OnPropertyChanged(nameof(IsOn));
+        OnPropertyChanged(nameof(DisplayChoices));
     }
 }

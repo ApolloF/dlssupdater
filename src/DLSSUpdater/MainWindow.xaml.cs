@@ -54,9 +54,10 @@ public partial class MainWindow : Window
     private void ScrollToGuide(string id)
     {
         GuideList.UpdateLayout();
-        foreach (var topic in HelpTopics.All)
+        foreach (var entry in _vm.Guide)
         {
-            if (GuideList.ItemContainerGenerator.ContainerFromItem(topic) is not FrameworkElement c) continue;
+            var topic = entry.Topic;
+            if (GuideList.ItemContainerGenerator.ContainerFromItem(entry) is not FrameworkElement c) continue;
             var border = VisualTreeHelper.GetChildrenCount(c) > 0 ? VisualTreeHelper.GetChild(c, 0) as System.Windows.Controls.Border : null;
             if (border is not null)
                 border.BorderBrush = topic.Id == id ? (Brush)FindResource("Accent") : Brushes.Transparent;

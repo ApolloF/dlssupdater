@@ -62,6 +62,23 @@
             </Grid>
         </DataTemplate>
 
+
+        <!-- Dropdown item that shows what the choice does under its name -->
+        <Style x:Key="DescribedItem" TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+            <Setter Property="MaxWidth" Value="440" />
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate DataType="{x:Type vm:OptionChoice}">
+                        <StackPanel Margin="0,1">
+                            <TextBlock Text="{Binding Label}" />
+                            <TextBlock Text="{Binding Description}" FontSize="11.5" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Visibility="{Binding Description, Converter={StaticResource NullToVis}}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate x:Key="OptionRow" DataType="{x:Type vm:IniOptionViewModel}">
             <Grid Margin="0,9">
                 <Grid.ColumnDefinitions>
@@ -78,7 +95,8 @@
                 </StackPanel>
                 <CheckBox Grid.Column="1" IsChecked="{Binding IsOn}" VerticalAlignment="Center"
                           Visibility="{Binding IsToggle, Converter={StaticResource BoolToVis}}" />
-                <ComboBox Grid.Column="1" Width="190" VerticalAlignment="Center" ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}"
+                <ComboBox Grid.Column="1" Width="200" VerticalAlignment="Center" ItemsSource="{Binding DisplayChoices}" SelectedItem="{Binding Selected}"
+                          ItemContainerStyle="{StaticResource DescribedItem}" MaxDropDownHeight="480"
                           Visibility="{Binding IsToggle, Converter={StaticResource InvBoolToVis}}" />
             </Grid>
         </DataTemplate>
@@ -503,6 +521,8 @@
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Keybinds}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="ReShade &amp; MFG" GroupName="st" Margin="0,0,24,0"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=ReShade}" />
+                                <RadioButton Style="{StaticResource Segment}" Content="DLSSNR &amp; HDR" GroupName="st" Margin="0,0,24,0"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nr}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="Advanced" GroupName="st"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Advanced}" />
                             </StackPanel>
@@ -598,13 +618,15 @@
                                                     ToolTip="{Binding Source=add-missing, Converter={StaticResource HelpTip}}" />
                                             </StackPanel>
                                         </CheckBox>
-                                        <CheckBox IsChecked="{Binding CarryOverGameIni}" Margin="0,8">
+                                        <Grid Margin="0,8">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Keep settings from a game's existing OptiScaler.ini / ReShade.ini" VerticalAlignment="Center" />
-                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="keep-settings"
-                                                    ToolTip="{Binding Source=keep-settings, Converter={StaticResource HelpTip}}" />
+                                                <TextBlock Text="Existing game configs" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="ini-mode"
+                                                        ToolTip="{Binding Source=ini-mode, Converter={StaticResource HelpTip}}" />
                                             </StackPanel>
-                                        </CheckBox>
+                                            <ComboBox Width="210" HorizontalAlignment="Right" ItemsSource="{Binding IniModes}" SelectedItem="{Binding IniMode}"
+                                                      ItemContainerStyle="{StaticResource DescribedItem}" />
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
 
@@ -681,6 +703,24 @@
                                            Text="Written to ReShade.ini next to the game. For Dynamic MFG also set the NVIDIA App's DLSS Frame Generation override to 'Use the 3D application setting' and cold-restart the game." />
                             </StackPanel>
 
+                            <!-- ===== DLSSNR & HDR ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Nr}">
+                                <TextBlock Text="NEURAL RENDERING" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding NrOptions}" ItemTemplate="{StaticResource OptionRow}" />
+                                </Border>
+                                <TextBlock Text="HDR TONE MAPPING" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding TonemapOptions}" ItemTemplate="{StaticResource OptionRow}" />
+                                </Border>
+                                <TextBlock Text="HDR OUTPUT" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,4">
+                                    <ItemsControl ItemsSource="{Binding HdrOptions}" ItemTemplate="{StaticResource OptionRow}" />
+                                </Border>
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="Written to OptiScaler.ini. Tone mapping only applies to games that render in linear light (most HDR games); frames the game already tone-mapped pass through untouched. Everything can also be changed live in the OptiScaler menu." />
+                            </StackPanel>
+
                             <!-- ===== Advanced ===== -->
                             <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Advanced}">
                                 <Grid>
@@ -743,15 +783,29 @@
                         <TextBlock Text="GUIDE" Style="{StaticResource SectionTitle}" />
                         <ItemsControl x:Name="GuideList" ItemsSource="{Binding Guide}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:HelpTopic}">
+                                <DataTemplate DataType="{x:Type vm:GuideEntry}">
                                     <Border BorderThickness="2,0,0,0" BorderBrush="Transparent" Padding="14,10,0,10" Margin="0,0,0,2">
                                         <StackPanel>
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding Group}" Style="{StaticResource Caps}" Foreground="{StaticResource Dim}"
+                                                <TextBlock Text="{Binding Topic.Title}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Topic.Group}" Style="{StaticResource Caps}" Foreground="{StaticResource Dim}"
                                                            VerticalAlignment="Center" Margin="10,1,0,0" />
                                             </StackPanel>
-                                            <TextBlock Text="{Binding Body}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding Topic.Body}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0" />
+                                            <ItemsControl ItemsSource="{Binding Choices}" Margin="0,6,0,0" Visibility="{Binding HasChoices, Converter={StaticResource BoolToVis}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:OptionChoice}">
+                                                        <Grid Margin="0,2">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="170" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}" FontSize="12.5" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Description}" Foreground="{StaticResource Muted}" FontSize="12.5" TextWrapping="Wrap" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>

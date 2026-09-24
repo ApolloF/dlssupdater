@@ -64,7 +64,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Guide entry to scroll to when the About page opens from an ⓘ button.</summary>
     [ObservableProperty] private string? _helpTarget;
 
-    public IReadOnlyList<HelpTopic> Guide => HelpTopics.All;
+    /// <summary>Guide on the About page: every help topic plus the choices of the option it belongs to.</summary>
+    public IReadOnlyList<GuideEntry> Guide => _guide ??= HelpTopics.All
+        .Select(t => new GuideEntry(t, SettingsVm.AllOptions.Count(o => o.Topic == t.Id) == 1
+                                       && SettingsVm.AllOptions.First(o => o.Topic == t.Id) is { IsToggle: false } opt
+            ? opt.Choices.Where(c => c.Description is not null && c.Value is not null).ToList()
+            : t.Id == "ini-mode" ? SettingsOptions.IniModes.ToList() : []))
+        .ToList();
+    private List<GuideEntry>? _guide;
 
     public string AppVersion => "v" + (typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
     [ObservableProperty]

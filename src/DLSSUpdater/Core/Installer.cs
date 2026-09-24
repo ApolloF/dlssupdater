@@ -16,7 +16,10 @@ public sealed class InstallOptions
     /// <summary>DLSS release to install; null = latest (never downgrades a newer game DLL).</summary>
     public string? DlssTag { get; init; }
     public bool Streamline { get; init; }
+    /// <summary>False = fresh OptiScaler.ini from the release (old one backed up).</summary>
     public bool CarryOverIni { get; init; } = true;
+    /// <summary>App settings replace values the game's config already has.</summary>
+    public bool OverwriteIni { get; init; }
     public string Proxy { get; init; } = "dxgi.dll";
     public IReadOnlyList<IniOverride> Overrides { get; init; } = [];
     public IReadOnlyList<IniOverride> ReShadeOverrides { get; init; } = [];
@@ -182,7 +185,7 @@ public sealed class Installer(ComponentStore store)
             foreach (var ov in o.Overrides)
                 if (string.Equals(cur.Get(ov.Section, ov.Key), ov.Value, StringComparison.OrdinalIgnoreCase)) m.OptiIni[ov.Id] = ov.Value;
         }
-        var merged = ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni, m.OptiIni);
+        var merged = ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni, m.OptiIni, o.OverwriteIni);
         FileUtil.AtomicWriteText(iniPath, merged.Text);
         m.OptiIni = merged.Applied;
         m.AddFile(ctx.Rel(iniPath));
@@ -201,7 +204,8 @@ public sealed class Installer(ComponentStore store)
         if (o.ReShadeOverrides.Count == 0 && ctx.M.ReShadeIni.Count == 0) return;
 
         var current = exists ? File.ReadAllText(path) : null;
-        var merged = ConfigProfile.Merge(current ?? "", current, o.ReShadeOverrides, carryOver: true, ctx.M.ReShadeIni);
+        var merged = ConfigProfile.Merge(current ?? "", current, o.ReShadeOverrides, carryOver: true, ctx.M.ReShadeIni,
+            overwrite: o.OverwriteIni || !o.CarryOverIni);
         if (current == merged.Text) { ctx.M.ReShadeIni = merged.Applied; return; }
 
         if (exists && !ctx.M.Owns(rel) && ctx.M.BackupOf(rel) is null) Backup(ctx, path, "file", copy: true);

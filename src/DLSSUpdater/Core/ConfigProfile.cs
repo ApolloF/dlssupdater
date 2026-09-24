@@ -55,7 +55,7 @@ public static class ConfigProfile
     /// in-game or in a hand-made config are never overwritten, while profile edits in the app still roll out.
     /// </summary>
     public static MergeResult Merge(string baseIni, string? currentIni, IEnumerable<IniOverride> overrides, bool carryOver,
-        IReadOnlyDictionary<string, string>? lastApplied = null)
+        IReadOnlyDictionary<string, string>? lastApplied = null, bool overwrite = false)
     {
         var ini = IniFile.Parse(baseIni);
         var pristine = IniFile.Parse(baseIni);
@@ -78,7 +78,7 @@ public static class ConfigProfile
 
             var cur = current?.Get(section, key);
             var ours = lastApplied.TryGetValue(o.Id, out var prev) && string.Equals(prev, cur, StringComparison.OrdinalIgnoreCase);
-            if (carryOver && !IsAuto(cur) && !ours) continue; // the game's own setting wins
+            if (carryOver && !overwrite && !IsAuto(cur) && !ours) continue; // the game's own setting wins
 
             ini.Set(section, key, value);
             applied[o.Id] = value;

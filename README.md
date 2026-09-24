@@ -21,7 +21,9 @@ and installs them next to each game's executable, together with your own `nvngx_
 6. Optionally replaces all `sl.*.dll` the game ships with one matching Streamline release (never mixed, never adds plugins).
 7. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.
 
-Ini rule: the app remembers which values it wrote. Those follow your settings on every update; anything a game's config already had, or you changed in-game, is kept.
+Existing configs (Settings → General): **Keep game settings** (default: values the app wrote follow your settings, anything the game had or you changed in-game stays), **Apply app settings** (your settings overwrite the same keys everywhere) or **Fresh config** (OptiScaler.ini rebuilt from the release; old one backed up).
+
+Settings also pre-configures DLSSNR (passes, model resolution, style, strengths) and its HDR tone mapping (curve, white point, paper white, highlight protection, max brightening) plus OptiScaler's HDR output. Every option has an ⓘ tooltip and a guide entry on the About page that explains each dropdown choice.
 
 Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, frame generation, DLSSNR) and ReShade (overlay, effects, screenshot, reload).
 
