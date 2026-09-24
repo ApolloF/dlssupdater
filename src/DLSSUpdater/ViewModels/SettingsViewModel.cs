@@ -58,6 +58,77 @@ public sealed partial class SettingsViewModel : ObservableObject
     public ObservableCollection<DlssChoice> DlssChoices { get; } = [];
 
     [ObservableProperty] private string _tab = "General";
+
+    /// <summary>Global NVIDIA driver profile; loaded the first time the NVIDIA tab opens.</summary>
+    public DriverProfileViewModel Driver { get; } = new();
+
+    partial void OnTabChanged(string value)
+    {
+        if (value == "Nvidia" && !Driver.Loaded && !Driver.Busy) Driver.LoadCommand.Execute(null);
+    }
+    [ObservableProperty] private string? _selectedPreset;
+
+    public ObservableCollection<string> PresetNames { get; } = [];
+
+    partial void OnSelectedPresetChanged(string? value)
+    {
+        if (value is null || _reloading) return;
+        var p = Settings.Presets.FirstOrDefault(x => x.Name == value);
+        if (p is null) return;
+        Replace(Overrides, p.Opti);
+        Replace(ReShadeOverrides, p.ReShade);
+        Commit();
+        RefreshEditors();
+        Log.Info($"Loaded preset '{value}'");
+    }
+
+    private bool _reloading;
+
+    private static void Replace(ObservableCollection<IniOverride> target, IEnumerable<IniOverride> source)
+    {
+        target.Clear();
+        foreach (var o in source) target.Add(new IniOverride(o.Section, o.Key, o.Value));
+    }
+
+    private static List<IniOverride> Copy(IEnumerable<IniOverride> list) =>
+        list.Where(o => !string.IsNullOrWhiteSpace(o.Section) && !string.IsNullOrWhiteSpace(o.Key))
+            .Select(o => new IniOverride(o.Section.Trim(), o.Key.Trim(), o.Value.Trim())).ToList();
+
+    [RelayCommand]
+    private void SavePreset()
+    {
+        var name = Views.Dialog.Prompt("Save preset",
+            "Saves the current OptiScaler.ini and ReShade.ini settings, keybinds and options under a name. " +
+            "Presets can be loaded here or assigned to single games.", SelectedPreset ?? "My preset");
+        if (name is null) return;
+        Settings.Presets.RemoveAll(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        Settings.Presets.Add(new ConfigPreset { Name = name, Opti = Copy(Overrides), ReShade = Copy(ReShadeOverrides) });
+        Save();
+        ReloadPresets(name);
+        _main.RefreshPresets();
+        Log.Info($"Saved preset '{name}'");
+    }
+
+    [RelayCommand]
+    private void DeletePreset()
+    {
+        if (SelectedPreset is not { } name) return;
+        if (!Views.Dialog.Confirm("Delete preset", $"Delete preset '{name}'? Games using it fall back to the current settings.", "Delete", danger: true)) return;
+        Settings.Presets.RemoveAll(p => p.Name == name);
+        foreach (var g in Settings.Games.Values.Where(g => g.Preset == name)) g.Preset = null;
+        Save();
+        ReloadPresets(null);
+        _main.RefreshPresets();
+    }
+
+    private void ReloadPresets(string? select)
+    {
+        _reloading = true;
+        PresetNames.Clear();
+        foreach (var p in Settings.Presets) PresetNames.Add(p.Name);
+        SelectedPreset = select;
+        _reloading = false;
+    }
     [ObservableProperty] private KeybindViewModel? _capturing;
 
     // ---------- general ----------
@@ -195,6 +266,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ResetAll()
+    {
+        if (!Views.Dialog.Confirm("Reset to defaults",
+                "Reset all OptiScaler.ini and ReShade.ini settings, keybinds and options to the app defaults? Saved presets are kept.", "Reset", danger: true))
+            return;
+        ResetOverrides();
+        _reloading = true;
+        SelectedPreset = null;
+        _reloading = false;
+    }
+
+    [RelayCommand]
     private void ResetOverrides()
     {
         Overrides.Clear();
@@ -259,6 +342,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Folders.Clear();
         foreach (var p in Settings.ManualGames) Folders.Add(new FolderEntry(p, "Game"));
         foreach (var p in Settings.LibraryRoots) Folders.Add(new FolderEntry(p, "Library"));
+
+        ReloadPresets(SelectedPreset is { } sp && Settings.Presets.Any(p => p.Name == sp) ? sp : null);
 
         DlssChoices.Clear();
         var store = _main.S.Store;

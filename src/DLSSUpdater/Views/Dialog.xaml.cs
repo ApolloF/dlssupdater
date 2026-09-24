@@ -29,6 +29,16 @@ public partial class Dialog : Window
     public static void Show(string title, string message) =>
         new Dialog(title, message, "OK", null, false).ShowDialog();
 
+    /// <summary>Asks for a line of text; null when cancelled or left empty.</summary>
+    public static string? Prompt(string title, string message, string initial, string ok = "Save")
+    {
+        var d = new Dialog(title, message, ok, "Cancel", false);
+        d.InputBox.Visibility = Visibility.Visible;
+        d.InputBox.Text = initial;
+        d.Loaded += (_, _) => { d.InputBox.Focus(); d.InputBox.SelectAll(); };
+        return d.ShowDialog() == true && !string.IsNullOrWhiteSpace(d.InputBox.Text) ? d.InputBox.Text.Trim() : null;
+    }
+
     private void OnOk(object sender, RoutedEventArgs e) => DialogResult = true;
     private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
 }

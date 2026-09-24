@@ -63,13 +63,22 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _streamlineVersion = "—";
     /// <summary>Guide entry to scroll to when the About page opens from an ⓘ button.</summary>
     [ObservableProperty] private string? _helpTarget;
+    /// <summary>The guide was opened from Settings; Back returns to the same tab and scroll position.</summary>
+    [ObservableProperty] private bool _canGoBack;
+    [ObservableProperty] private CompatReport? _compat;
+    [ObservableProperty] private bool _compatWarning;
+
+    public event Action? LeavingSettings;
+    public event Action? ReturnedToSettings;
 
     /// <summary>Guide on the About page: every help topic plus the choices of the option it belongs to.</summary>
     public IReadOnlyList<GuideEntry> Guide => _guide ??= HelpTopics.All
         .Select(t => new GuideEntry(t, SettingsVm.AllOptions.Count(o => o.Topic == t.Id) == 1
                                        && SettingsVm.AllOptions.First(o => o.Topic == t.Id) is { IsToggle: false } opt
             ? opt.Choices.Where(c => c.Description is not null && c.Value is not null).ToList()
-            : t.Id == "ini-mode" ? SettingsOptions.IniModes.ToList() : []))
+            : t.Id == "ini-mode" ? SettingsOptions.IniModes.ToList()
+            : SettingsVm.Driver.Options.FirstOrDefault(o => o.Topic == t.Id) is { } nv ? nv.Choices.Where(c => c.Value is not null).ToList()
+            : []))
         .ToList();
     private List<GuideEntry>? _guide;
 
@@ -116,7 +125,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnAboutOpenChanged(bool value)
     {
-        if (!value) HelpTarget = null;
+        if (!value)
+        {
+            HelpTarget = null;
+            CanGoBack = false;
+        }
         if (value && SettingsOpen) SettingsOpen = false;
     }
     partial void OnFilterChanged(string value) => GamesView.Refresh();
@@ -189,6 +202,7 @@ public sealed partial class MainViewModel : ObservableObject
             g.RefreshStatus();
         }
         CountUpdates();
+        await CheckCompatAsync();
         Log.Info($"Latest: OptiScaler-NR {OptiVersion} · DLSS {DlssVersion} · MFG Unlock {MfgVersion}{(Online ? "" : " (offline)")}");
     }
 
@@ -231,6 +245,7 @@ public sealed partial class MainViewModel : ObservableObject
             Log.Info("Everything is up to date");
             return;
         }
+        if (targets.Any(g => g.Manifest!.Opti) && !ConfirmCompat()) return;
         var failed = 0;
         foreach (var g in targets)
         {
@@ -299,9 +314,54 @@ public sealed partial class MainViewModel : ObservableObject
     private void ToggleAbout() => AboutOpen = !AboutOpen;
 
     [RelayCommand]
+    private void Back()
+    {
+        SettingsOpen = true;
+        ReturnedToSettings?.Invoke();
+    }
+
+    public void RefreshPresets()
+    {
+        foreach (var g in Games) g.RebuildPresetChoices();
+    }
+
+    /// <summary>Every OptiScaler.ini key this app can write: profile, keybinds and friendly options.</summary>
+    private IEnumerable<(string Section, string Key)> ManagedOptiKeys() =>
+        S.Settings.IniOverrides.Select(o => (o.Section, o.Key))
+            .Concat(S.Settings.Presets.SelectMany(p => p.Opti).Select(o => (o.Section, o.Key)))
+            .Concat(ConfigProfile.Defaults().Select(o => (o.Section, o.Key)))
+            .Concat(KeybindDef.Opti.Select(k => (k.Section, k.Key)))
+            .Concat(SettingsVm.NrOptions.Concat(SettingsVm.TonemapOptions).Concat(SettingsVm.HdrOptions).Select(o => (o.Section, o.Key)));
+
+    private async Task CheckCompatAsync()
+    {
+        if (S.Store.Opti is not { } opti) return;
+        try
+        {
+            Compat = await OptiCompat.CheckAsync(Gh, opti.Tag, ManagedOptiKeys(), _cts.Token);
+            CompatWarning = Compat.HasIssues;
+            if (Compat.HasIssues) Log.Info("Config check: " + Compat.Summary.Replace("\n", " "));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            Log.Info($"Config check skipped ({ex.Message})");
+        }
+    }
+
+    /// <summary>Asks before installing an OptiScaler release whose config doesn't match what this app writes.</summary>
+    private bool ConfirmCompat()
+    {
+        if (Compat is not { HasIssues: true } c) return true;
+        return Dialog.Confirm("OptiScaler config changed", c.Summary + "\n\nInstall anyway? Settings that still exist are applied normally.", "Install anyway");
+    }
+
+    [RelayCommand]
     private void ShowHelp(string topic)
     {
+        var fromSettings = SettingsOpen;
+        if (fromSettings) LeavingSettings?.Invoke();
         AboutOpen = true;
+        CanGoBack = fromSettings;
         HelpTarget = null;
         HelpTarget = topic;
     }
@@ -354,6 +414,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (!ok) return;
             o = g.BuildOptions(dlssOnly, acConfirmed: true);
         }
+
+        if (o.Opti && !ConfirmCompat()) return;
 
         if (!dlssOnly && o.Opti && g.SelectedTarget.Exe is null && !g.Info.Exes.Any())
             Log.Info($"{g.Name}: no executable found in the target folder, OptiScaler must sit next to the game exe");

@@ -10,6 +10,16 @@ public sealed class GameOverride
     public string? Proxy { get; set; }
     /// <summary>DLSS release tag pinned for this game; null follows the global choice.</summary>
     public string? DlssTag { get; set; }
+    /// <summary>Config preset used for this game; null uses the current settings.</summary>
+    public string? Preset { get; set; }
+}
+
+/// <summary>A named snapshot of the OptiScaler.ini and ReShade.ini settings (incl. keybinds and options).</summary>
+public sealed class ConfigPreset
+{
+    public string Name { get; set; } = "";
+    public List<IniOverride> Opti { get; set; } = [];
+    public List<IniOverride> ReShade { get; set; } = [];
 }
 
 public sealed class AppSettings
@@ -36,6 +46,10 @@ public sealed class AppSettings
     public List<IniOverride> IniOverrides { get; set; } = ConfigProfile.Defaults();
     public List<IniOverride> ReShadeOverrides { get; set; } = ConfigProfile.ReShadeDefaults();
     public bool InstallStreamline { get; set; }
+    public List<ConfigPreset> Presets { get; set; } = [];
+
+    public ConfigPreset? PresetFor(string gameId) =>
+        Games.GetValueOrDefault(gameId)?.Preset is { } name ? Presets.FirstOrDefault(p => p.Name == name) : null;
     /// <summary>DLSS release tag to install; null = latest.</summary>
     public string? DlssTag { get; set; }
 

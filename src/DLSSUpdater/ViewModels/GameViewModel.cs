@@ -81,6 +81,43 @@ public sealed partial class GameViewModel : ObservableObject
     [ObservableProperty] private string _proxy = "dxgi.dll";
     [ObservableProperty] private InstallManifest? _manifest;
     [ObservableProperty] private DlssChoice? _dlssChoice;
+    [ObservableProperty] private string _presetChoice = GlobalPreset;
+    [ObservableProperty] private string _detailTab = "Install";
+    [ObservableProperty] private DriverProfileViewModel? _driver;
+
+    /// <summary>The exe the driver profile is matched on.</summary>
+    public string? DriverExe => SelectedTarget?.Exe ?? Info.Exes.FirstOrDefault();
+
+    partial void OnDetailTabChanged(string value)
+    {
+        if (value != "Nvidia") return;
+        if (Driver is null && DriverExe is { } exe) Driver = new DriverProfileViewModel(exe, Name);
+        if (Driver is { Loaded: false, Busy: false } d) d.LoadCommand.Execute(null);
+    }
+
+    public const string GlobalPreset = "Current settings";
+    public ObservableCollection<string> PresetChoices { get; } = [];
+
+    public void RebuildPresetChoices()
+    {
+        var wasLoading = _loading;
+        _loading = true;
+        PresetChoices.Clear();
+        PresetChoices.Add(GlobalPreset);
+        foreach (var p in _s.Settings.Presets) PresetChoices.Add(p.Name);
+        PresetChoice = _s.Settings.PresetFor(Id)?.Name ?? GlobalPreset;
+        _loading = wasLoading;
+    }
+
+    partial void OnPresetChoiceChanged(string value)
+    {
+        if (_loading) return;
+        _s.Settings.For(Id).Preset = value == GlobalPreset ? null : value;
+        _s.Settings.Save();
+    }
+
+    private IReadOnlyList<IniOverride> OptiProfile => _s.Settings.PresetFor(Id)?.Opti ?? _s.Settings.IniOverrides;
+    private IReadOnlyList<IniOverride> ReShadeProfile => _s.Settings.PresetFor(Id)?.ReShade ?? _s.Settings.ReShadeOverrides;
 
     public ObservableCollection<DlssChoice> DlssChoices { get; } = [];
     public bool HasStreamline => Info.Streamline.Count > 0;
@@ -129,6 +166,7 @@ public sealed partial class GameViewModel : ObservableObject
                          ?? Targets.FirstOrDefault();
 
         RebuildDlssChoices();
+        RebuildPresetChoices();
         _loading = false;
         LoadManifest();
         OnPropertyChanged(string.Empty);
@@ -318,11 +356,11 @@ public sealed partial class GameViewModel : ObservableObject
         AddMissingDlss = _s.Settings.AddMissingDlss && !dlssOnly && On("opti"),
         DlssTag = EffectiveDlssTag,
         Streamline = On("streamline") && HasStreamline,
-        ReShadeOverrides = _s.Settings.ReShadeOverrides,
+        ReShadeOverrides = ReShadeProfile,
         CarryOverIni = _s.Settings.IniMode != "fresh",
         OverwriteIni = _s.Settings.IniMode == "apply",
         Proxy = Proxy,
-        Overrides = _s.Settings.IniOverrides,
+        Overrides = OptiProfile,
         AntiCheatConfirmed = acConfirmed,
     };
 
@@ -337,11 +375,11 @@ public sealed partial class GameViewModel : ObservableObject
         AddMissingDlss = false,
         DlssTag = EffectiveDlssTag,
         Streamline = m.Streamline && HasStreamline,
-        ReShadeOverrides = _s.Settings.ReShadeOverrides,
+        ReShadeOverrides = ReShadeProfile,
         CarryOverIni = _s.Settings.IniMode != "fresh",
         OverwriteIni = _s.Settings.IniMode == "apply",
         Proxy = m.Proxy ?? Proxy,
-        Overrides = _s.Settings.IniOverrides,
+        Overrides = OptiProfile,
         AntiCheatConfirmed = m.AntiCheatConfirmed,
     };
 

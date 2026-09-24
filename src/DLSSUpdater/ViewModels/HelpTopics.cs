@@ -6,6 +6,7 @@ public sealed record HelpTopic(string Id, string Group, string Title, string Bod
 public sealed record GuideEntry(HelpTopic Topic, IReadOnlyList<OptionChoice> Choices)
 {
     public bool HasChoices => Choices.Count > 0;
+    public string? Advice => HelpTopics.AdviceFor(Topic.Id);
 }
 
 /// <summary>Text behind the ⓘ buttons; the About page lists all of them as the guide.</summary>
@@ -110,6 +111,35 @@ public static class HelpTopics
         new("hdr-skip", "HDR output", "Skip color space",
             "Don't set the HDR color space; for games or mods that set it themselves and get wrong colours when OptiScaler does too."),
 
+        // ---------- NVIDIA driver ----------
+        new("nv-sr-preset", "NVIDIA", "DLSS Super Resolution preset",
+            "Tells the driver which DLSS SR model preset to use, whatever the game asks for (like the NVIDIA App's DLSS Override - Model Presets). " +
+            "The DLSS override switch is turned on with it, as the NVIDIA App does. Works with the game's own nvngx_dlss.dll too. " +
+            "OptiScaler has its own preset override (RenderPresetOverride in the profile); if both are set, OptiScaler's wins in games it handles."),
+        new("nv-sr-mode", "NVIDIA", "DLSS render resolution",
+            "Forces the internal render resolution DLSS upscales from, independent of the game's quality menu. Custom uses an exact percentage per axis."),
+        new("nv-rr-preset", "NVIDIA", "DLSS Ray Reconstruction preset",
+            "Model preset for Ray Reconstruction (the DLSS denoiser in path-traced games). Only matters in games that use RR."),
+        new("nv-fg-preset", "NVIDIA", "DLSS Frame Generation preset",
+            "Which DLSS FG model the driver loads. Letters are driver-defined and change between releases; Latest is the safe choice."),
+        new("nv-mfg", "NVIDIA", "Multi frame generation",
+            "Driver-side multiplier override for DLSS FG (the NVIDIA App's 'Multi Frame Generation' override). Native 3x/4x needs an RTX 50 card; " +
+            "on RTX 40 use MFG Unlock instead."),
+        new("nv-smooth-motion", "NVIDIA", "Smooth Motion",
+            "Driver-level frame generation that works in games without DLSS FG (DX11, DX12, Vulkan). Needs RTX 40/50 and driver 571.86+. " +
+            "Don't combine with in-game FG."),
+        new("nv-rtx-hdr", "NVIDIA", "RTX HDR",
+            "AI conversion of SDR games to HDR. Needs Windows HDR on. If it doesn't kick in, enable RTX HDR once in the NVIDIA App so its global flags exist. " +
+            "Doesn't work together with DLDSR or some overlays."),
+        new("nv-vibrance", "NVIDIA", "RTX Dynamic Vibrance",
+            "AI saturation / clarity boost for SDR output. The SDR counterpart of RTX HDR; not used when RTX HDR is on."),
+        new("nv-fps", "NVIDIA", "Max frame rate",
+            "Driver FPS limiter. Values a few frames under refresh keep G-Sync active; with frame generation the cap applies to the output frame rate."),
+        new("nv-vsync", "NVIDIA", "Vertical sync",
+            "Driver VSync override. With G-Sync / VRR the usual setup is VSync On here, in-game VSync off, and an FPS cap a few frames under refresh."),
+        new("nv-power", "NVIDIA", "Power management",
+            "How the GPU manages clocks. Prefer max performance keeps clocks high, avoiding clock-change stutter in light games at the cost of power."),
+
         // ---------- MFG Unlock ----------
         new("force-multiplier", "MFG Unlock", "Force frame multiplier",
             "Game setting uses whatever multiplier the game's menu selects. 2x–6x forces it, for games that only offer an FG on/off switch. " +
@@ -130,6 +160,68 @@ public static class HelpTopics
             "Workarounds for HDR games where frame generation breaks the UI or colors. Native changes nothing. UI Composition handles the HUD separately. " +
             "Auto guard + UI adds automatic detection on top. Final color fallback is the most invasive, for games the others don't fix. Try in that order."),
     ];
+
+    /// <summary>"Which should I pick" guidance shown in the guide under each topic.</summary>
+    private static readonly Dictionary<string, string> Advice = new()
+    {
+        ["proxy"] = "Start with dxgi.dll. If the game doesn't show the OptiScaler overlay or crashes at start, try winmm.dll, then version.dll. " +
+                    "If the game already has a dxgi.dll from another mod (ReShade, Special K), OptiScaler takes over that name and loads ReShade itself, so that is fine.",
+        ["dlss-version"] = "Keep Latest globally. Pin a game only when a new DLSS build looks worse there (ghosting, shimmer), or for Dynamic MFG pin exactly 310.9.1 " +
+                           "together with the Streamline swap.",
+        ["prereleases"] = "Leave on: the OptiScaler-NR fork publishes nothing else.",
+        ["streamline"] = "Only turn on for games where you want Dynamic MFG and the game ships an older Streamline (the DLSS files list shows the SL version). " +
+                         "If FG disappears or the game crashes afterwards, use Restore DLSS on that game.",
+        ["add-missing"] = "Leave on. It only adds a file to games that have none, and Uninstall removes it again.",
+        ["ini-mode"] = "Keep game settings for everyday use: updates never undo tuning you did in-game. Apply app settings once after you changed something here and want " +
+                       "it everywhere, then switch back. Fresh config when a game's ini got messy or a new OptiScaler release changed a lot.",
+        ["local-components"] = "After downloading a new nvngx_dlssnr.dll or ReShade build, import it here and press Update all.",
+        ["keybinds"] = "Pick keys the game doesn't use: Delete, Insert, End, Page Up/Down and \\ are usually free. Avoid Home if you use ReShade's default overlay key.",
+        ["skip-tutorial"] = "On, unless you are new to ReShade.",
+        ["performance-mode"] = "Off while you set up effects, on for playing. With only add-ons (RenoDX, MFG Unlock) and no effects it makes no difference.",
+        ["show-fps"] = "Off if you use OptiScaler's or the NVIDIA overlay; on for a quick counter.",
+        ["load-early"] = "Off by default. Turn on only if MFG Unlock's panel says the game initialised Streamline before the add-on loaded (e.g. Cyberpunk).",
+        ["force-multiplier"] = "Game setting whenever the game has its own MFG menu. Force 3x or 4x for games that only have an FG on/off switch. " +
+                               "Above 4x rarely looks good below 60 base FPS.",
+        ["max-count"] = "Default. Raise only if you want to force 5x/6x in a game that builds its menu from this value.",
+        ["dynamic-mfg"] = "Try it for high-refresh displays when the base frame rate varies a lot. Keep off when you prefer a fixed multiplier or it isn't accepted " +
+                          "(the add-on log says why).",
+        ["dynamic-target"] = "Refresh rate for G-Sync / VRR displays. A fixed value slightly below refresh (e.g. 138 for 144 Hz) if you cap FPS anyway.",
+        ["runtime-selection"] = "Prefer local files when you use a pinned DLSS version or the Streamline swap, otherwise NVIDIA may silently replace them. Game default otherwise.",
+        ["hdr-compat"] = "Native until you see HUD smearing or wrong colours with FG in HDR, then UI Composition, then Auto guard + UI, then Final color fallback.",
+        ["nr-enabled"] = "On if nvngx_dlssnr.dll is installed; toggle it in-game with the DLSSNR key to compare.",
+        ["nr-before-sr"] = "On (cheaper, cleaner). Turn off if a game shows smeared detail or odd colours with RR, and compare.",
+        ["nr-finished"] = "Off. Try on for games whose post-processing (bloom, grading) fights the model, and accept that the HUD may change.",
+        ["nr-passes"] = "1. 2 only for a deliberately stronger look with headroom to spare; 3 is mostly for experiments.",
+        ["nr-scale"] = "100% at 1440p output. 75% at 4K or on RTX 40 / lower cards to keep the cost down; 50% if FPS drops too much.",
+        ["nr-style"] = "Standard. Natural if the result looks over-processed, Cinematic for a graded look.",
+        ["nr-strengths"] = "Start at the app defaults (local structure 0.7, local tone 0.25, skin 0.5): detail without changing the game's lighting too much. " +
+                           "Lower local tone first if the image looks re-lit; lower skin structure if faces look aged.",
+        ["nr-colour"] = "Low (0.2) keeps the game's art direction. Raise toward 1 only if you like the model's colour grading.",
+        ["tm-mode"] = "SDR games: leave it, it doesn't apply. HDR games: Hybrid composed as the safe default; Neutwo composed if highlights look dull; " +
+                      "replace modes only if composed looks too weak.",
+        ["tm-white"] = "Auto HDR exposure for HDR games; Game exposure if the game reports exposure to the upscaler reliably (fewer brightness jumps); Manual as fallback.",
+        ["tm-paper"] = "1.0. Lower (0.75) if bright skies or lights lose detail; raise (1.5) only for very dark games.",
+        ["tm-highlight"] = "0 to 25. Raise if lamps and the sky get blown out after NR.",
+        ["tm-maxratio"] = "2x. Lower to 1.5x if bright lights break into coloured blocks.",
+        ["tm-transfer"] = "1.0. 0.75 for a subtler effect without changing the model's strengths.",
+        ["tm-hdrtransfer"] = "Off unless you use Run before upscaling + Apply to finished picture in an HDR game and brightness looks wrong.",
+        ["hdr-force"] = "Off. Only with an HDR mod that expects OptiScaler to make the swapchain HDR.",
+        ["hdr-10"] = "Off (scRGB, more precision). On if your capture tool or display chain works better with HDR10.",
+        ["nv-sr-preset"] = "Latest for most games. K for Quality / DLAA, M for Performance, L for Ultra Performance. Set it per game only where the global choice looks worse.",
+        ["nv-sr-mode"] = "Use the game's setting. DLAA if you have headroom; Performance with an L/M preset at 4K looks close to Quality with older presets.",
+        ["nv-rr-preset"] = "Latest. Try D/E if the newest preset shows smearing in a specific game.",
+        ["nv-fg-preset"] = "Latest, or Use global. Only change when a game shows FG artifacts that a different model fixes.",
+        ["nv-mfg"] = "Leave it to the game unless it only offers 2x; RTX 40 owners use MFG Unlock in the ReShade & MFG tab instead.",
+        ["nv-smooth-motion"] = "Per game, for titles without DLSS FG and a base frame rate above ~50 FPS. Keep global off.",
+        ["nv-rtx-hdr"] = "Per game for SDR-only titles on an HDR monitor. Off for games with native HDR or a RenoDX HDR mod.",
+        ["nv-vibrance"] = "Taste. Per game for dull-looking SDR games; off when using RTX HDR.",
+        ["nv-fps"] = "Global: 3–4 FPS under your refresh (e.g. 141 for 144 Hz, 237 for 240 Hz) with G-Sync. Per game only for special cases.",
+        ["nv-vsync"] = "Global On with G-Sync, off in games. Off if you don't use VRR and want the lowest latency.",
+        ["nv-power"] = "Normal globally. Prefer max performance per game if one stutters when the GPU clocks down.",
+        ["hdr-skip"] = "Off. On only if colours look wrong while another HDR mod is active.",
+    };
+
+    public static string? AdviceFor(string id) => Advice.GetValueOrDefault(id);
 
     private static readonly Dictionary<string, HelpTopic> ById = All.ToDictionary(t => t.Id);
 

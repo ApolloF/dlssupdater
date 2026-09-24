@@ -27,6 +27,12 @@ Settings also pre-configures DLSSNR (passes, model resolution, style, strengths)
 
 Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, frame generation, DLSSNR) and ReShade (overlay, effects, screenshot, reload).
 
+**Presets**: save the whole OptiScaler / ReShade configuration (options, keybinds, overrides) under a name, load it, or assign it to single games. **Reset to defaults** restores the app's profile.
+
+**Config check**: before installing a new OptiScaler-NR release the app compares its OptiScaler.ini with every key it manages and warns when keys disappeared or the release is a newer major line than tested.
+
+**NVIDIA tab** (Settings for the global profile, and per game under *NVIDIA profile*): DLSS SR / RR / FG preset overrides, DLSS render resolution, multi frame generation count, Smooth Motion, RTX HDR, RTX Dynamic Vibrance, FPS limiter, VSync and power mode, written straight to the driver profile via NvAPI like NVIDIA Profile Inspector. Nothing is loaded until the tab is opened.
+
 **Update all** re-applies everything to each managed game after a new release or after a game patch reverts the DLLs.
 
 Games are discovered from Steam, Epic, GOG, EA, Ubisoft and `XboxGames` folders. Standalone games can be added one by one or as a library folder whose subfolders are games.

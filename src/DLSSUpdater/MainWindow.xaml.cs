@@ -11,6 +11,7 @@ namespace DLSSUpdater;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
+    private double _settingsOffset;
 
     public MainWindow()
     {
@@ -25,6 +26,9 @@ public partial class MainWindow : Window
         };
         StateChanged += (_, _) => UpdateMaximized();
         PreviewKeyDown += OnPreviewKeyDown;
+        _vm.LeavingSettings += () => _settingsOffset = SettingsScroll.VerticalOffset;
+        _vm.ReturnedToSettings += () => Dispatcher.BeginInvoke(
+            () => SettingsScroll.ScrollToVerticalOffset(_settingsOffset), System.Windows.Threading.DispatcherPriority.Loaded);
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.HelpTarget) && _vm.HelpTarget is { } id)
@@ -90,6 +94,7 @@ public partial class MainWindow : Window
             else if (step.StartsWith("tab:")) _vm.SettingsVm.Tab = step[4..];
             else if (step == "about") _vm.AboutOpen = true;
             else if (step.StartsWith("help:")) _vm.ShowHelpCommand.Execute(step[5..]);
+            else if (step == "nvgame" && _vm.SelectedGame is { } g) g.DetailTab = "Nvidia";
             else if (step == "log") _vm.LogOpen = true;
             else if (step.StartsWith("game:") && int.TryParse(step[5..], out var i))
                 _vm.SelectedGame = _vm.GamesView.Cast<GameViewModel>().ElementAtOrDefault(i);

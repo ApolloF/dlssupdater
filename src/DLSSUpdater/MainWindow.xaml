@@ -79,6 +79,45 @@
             </Setter>
         </Style>
 
+
+        <DataTemplate x:Key="NvOptionRow" DataType="{x:Type vm:NvOptionViewModel}">
+            <Grid Margin="0,9">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,24,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="6" Height="6" Fill="{StaticResource Warn}" Margin="0,0,8,0" VerticalAlignment="Center" ToolTip="Not applied yet"
+                                 Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                        <Button Style="{StaticResource InfoBtn}" CommandParameter="{Binding Topic}"
+                                ToolTip="{Binding Topic, Converter={StaticResource HelpTip}}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Hint}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                </StackPanel>
+                <ComboBox Grid.Column="1" Width="220" VerticalAlignment="Center" ItemsSource="{Binding DisplayChoices}" SelectedItem="{Binding Selected}"
+                          ItemContainerStyle="{StaticResource DescribedItem}" MaxDropDownHeight="480" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- Driver profile panel, shared by the global tab and the per-game view -->
+        <DataTemplate x:Key="DriverPanel" DataType="{x:Type vm:DriverProfileViewModel}">
+            <StackPanel>
+                <Grid Margin="0,4,0,10">
+                    <TextBlock Text="{Binding Status}" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,200,0" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Revert" Style="{StaticResource BtnGhost}" Command="{Binding RevertCommand}" IsEnabled="{Binding IsDirty}" Margin="0,0,8,0" />
+                        <Button Content="Apply to driver" Style="{StaticResource BtnPrimary}" Command="{Binding ApplyCommand}" IsEnabled="{Binding IsDirty}" />
+                    </StackPanel>
+                </Grid>
+                <ProgressBar IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8" />
+                <Border Style="{StaticResource Card}" Padding="16,4" Visibility="{Binding Loaded, Converter={StaticResource BoolToVis}}">
+                    <ItemsControl ItemsSource="{Binding Options}" ItemTemplate="{StaticResource NvOptionRow}" />
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
         <DataTemplate x:Key="OptionRow" DataType="{x:Type vm:IniOptionViewModel}">
             <Grid Margin="0,9">
                 <Grid.ColumnDefinitions>
@@ -157,7 +196,12 @@
                 <StackPanel Orientation="Horizontal">
                     <StackPanel Margin="0,0,28,0">
                         <TextBlock Text="OPTISCALER-NR" Style="{StaticResource Caps}" />
-                        <TextBlock Text="{Binding OptiVersion}" Style="{StaticResource ChipValue}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding OptiVersion}" Style="{StaticResource ChipValue}" />
+                            <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Warn}" FontSize="14" Margin="8,3,0,0"
+                                       Background="Transparent" ToolTip="{Binding Compat.Summary}" ToolTipService.InitialShowDelay="100"
+                                       Visibility="{Binding CompatWarning, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
                     </StackPanel>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
                     <StackPanel Margin="0,0,28,0">
@@ -377,6 +421,25 @@
                         </StackPanel>
                     </Border>
 
+                    <Grid Margin="0,22,0,0">
+                        <Border Style="{StaticResource Divider}" VerticalAlignment="Bottom" />
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource Segment}" Content="Install" GroupName="{Binding Id}" Margin="0,0,24,0"
+                                         IsChecked="{Binding DetailTab, Converter={StaticResource EqualsToBool}, ConverterParameter=Install}" />
+                            <RadioButton Style="{StaticResource Segment}" Content="NVIDIA profile" GroupName="{Binding Id}"
+                                         IsChecked="{Binding DetailTab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nvidia}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Visibility="{Binding DetailTab, Converter={StaticResource EqualsToVis}, ConverterParameter=Nvidia}" Margin="0,18,0,0">
+                        <ContentPresenter Content="{Binding Driver}" ContentTemplate="{StaticResource DriverPanel}" />
+                        <TextBlock Text="No executable found for this game, so there is no driver profile to match." Style="{StaticResource MutedText}"
+                                   Visibility="{Binding DriverExe, Converter={StaticResource NullToVis}, ConverterParameter=invert}" />
+                        <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="Written to this game's NVIDIA driver profile (matched on its exe). 'Use global' falls back to Settings → NVIDIA." />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding DetailTab, Converter={StaticResource EqualsToVis}, ConverterParameter=Install}">
                     <!-- Target -->
                     <TextBlock Text="INSTALL LOCATION" Style="{StaticResource SectionTitle}" />
                     <Grid>
@@ -392,6 +455,11 @@
                     </Grid>
                     <TextBlock Text="Files go next to the game executable. Proxy is the name OptiScaler is loaded as."
                                Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,8,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <TextBlock Text="CONFIG PRESET" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <ComboBox Width="240" ItemsSource="{Binding PresetChoices}" SelectedItem="{Binding PresetChoice}"
+                                  ToolTip="OptiScaler / ReShade settings used for this game (save presets in Settings)" />
+                    </StackPanel>
 
                     <!-- Components -->
                     <TextBlock Text="COMPONENTS" Style="{StaticResource SectionTitle}" />
@@ -496,6 +564,7 @@
                                     Command="{Binding DataContext.UninstallCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                         </StackPanel>
                     </Grid>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 
@@ -512,7 +581,19 @@
                             <Button Style="{StaticResource BtnIcon}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="Close"
                                     Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                         </Grid>
-                        <Grid Margin="0,18,0,0">
+                        <Grid Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="PRESET" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <ComboBox Width="200" ItemsSource="{Binding PresetNames}" SelectedItem="{Binding SelectedPreset}"
+                                          ToolTip="Load a saved preset into the settings below" />
+                                <Button Content="Save as…" Style="{StaticResource BtnGhost}" Margin="8,0,0,0" Command="{Binding SavePresetCommand}" />
+                                <Button Content="Delete" Style="{StaticResource BtnGhost}" Command="{Binding DeletePresetCommand}"
+                                        Visibility="{Binding SelectedPreset, Converter={StaticResource NullToVis}}" />
+                            </StackPanel>
+                            <Button Content="Reset to defaults" Style="{StaticResource BtnGhost}" HorizontalAlignment="Right" Command="{Binding ResetAllCommand}"
+                                    ToolTip="All OptiScaler / ReShade settings, keybinds and options back to the app defaults" />
+                        </Grid>
+                        <Grid Margin="0,14,0,0">
                             <Border Style="{StaticResource Divider}" VerticalAlignment="Bottom" />
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton Style="{StaticResource Segment}" Content="General" GroupName="st" Margin="0,0,24,0"
@@ -523,13 +604,15 @@
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=ReShade}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="DLSSNR &amp; HDR" GroupName="st" Margin="0,0,24,0"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nr}" />
+                                <RadioButton Style="{StaticResource Segment}" Content="NVIDIA" GroupName="st" Margin="0,0,24,0"
+                                             IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Nvidia}" />
                                 <RadioButton Style="{StaticResource Segment}" Content="Advanced" GroupName="st"
                                              IsChecked="{Binding Tab, Converter={StaticResource EqualsToBool}, ConverterParameter=Advanced}" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="36,0,36,36" MaxWidth="860">
 
                             <!-- ===== General ===== -->
@@ -721,6 +804,14 @@
                                            Text="Written to OptiScaler.ini. Tone mapping only applies to games that render in linear light (most HDR games); frames the game already tone-mapped pass through untouched. Everything can also be changed live in the OptiScaler menu." />
                             </StackPanel>
 
+                            <!-- ===== NVIDIA (global driver profile) ===== -->
+                            <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Nvidia}">
+                                <TextBlock Text="GLOBAL DRIVER PROFILE" Style="{StaticResource SectionTitle}" />
+                                <ContentPresenter Content="{Binding Driver}" ContentTemplate="{StaticResource DriverPanel}" />
+                                <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="The same driver settings the NVIDIA App and Profile Inspector edit. Per-game values are under each game's NVIDIA profile tab and win over these." />
+                            </StackPanel>
+
                             <!-- ===== Advanced ===== -->
                             <StackPanel Visibility="{Binding Tab, Converter={StaticResource EqualsToVis}, ConverterParameter=Advanced}">
                                 <Grid>
@@ -752,7 +843,7 @@
                                 <TextBlock Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
                                            Text="Raw section / key / value pairs, also edited by the Keybinds and ReShade tabs. A value a game already set itself is kept; values written by this app follow your changes." />
                                 <Button Content="Reset all to defaults" Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Margin="0,16,0,0"
-                                        Command="{Binding ResetOverridesCommand}" />
+                                        Command="{Binding ResetAllCommand}" />
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -761,6 +852,16 @@
 
             <!-- About overlay -->
             <Border Grid.Column="1" Background="{StaticResource Bg}" Visibility="{Binding AboutOpen, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="26,8"
+                        Visibility="{Binding CanGoBack, Converter={StaticResource BoolToVis}}">
+                    <Button Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Command="{Binding BackCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72B;" Style="{StaticResource Icon}" Margin="0,0,8,0" />
+                            <TextBlock Text="Back to settings" />
+                        </StackPanel>
+                    </Button>
+                </Border>
                 <ScrollViewer x:Name="AboutScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="36,28,36,36" MaxWidth="760" HorizontalAlignment="Left">
                         <Grid>
@@ -792,6 +893,12 @@
                                                            VerticalAlignment="Center" Margin="10,1,0,0" />
                                             </StackPanel>
                                             <TextBlock Text="{Binding Topic.Body}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0" />
+                                            <Border Background="{StaticResource AccentSoft}" BorderBrush="{StaticResource Accent}" BorderThickness="2,0,0,0"
+                                                    Padding="10,6" Margin="0,8,0,0" Visibility="{Binding Advice, Converter={StaticResource NullToVis}}">
+                                                <TextBlock TextWrapping="Wrap" LineHeight="19">
+                                                    <Run Text="Which to pick  " Foreground="{StaticResource Accent}" FontWeight="SemiBold" /><Run Text="{Binding Advice, Mode=OneWay}" Foreground="{StaticResource Text}" />
+                                                </TextBlock>
+                                            </Border>
                                             <ItemsControl ItemsSource="{Binding Choices}" Margin="0,6,0,0" Visibility="{Binding HasChoices, Converter={StaticResource BoolToVis}}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:OptionChoice}">
@@ -871,6 +978,7 @@
                         <TextBlock Text="Data, cache and log: %LocalAppData%\DLSSUpdater" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,16,0,0" />
                     </StackPanel>
                 </ScrollViewer>
+                </DockPanel>
             </Border>
 
         </Grid>
