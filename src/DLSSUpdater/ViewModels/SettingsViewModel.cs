@@ -326,6 +326,32 @@ public sealed partial class SettingsViewModel : ObservableObject
         _main.RescanCommand.Execute(null);
     }
 
+    // ---------- WaterLauncher ----------
+
+    [ObservableProperty] private bool _waterLauncherConnected = Addon.AddonRegistration.Registered;
+
+    public string WaterLauncherHint => WaterLauncherConnected
+        ? "Connected. Turn DLSS Updater on in WaterLauncher: Settings, Add-ons. It then shows each game's DLSS version and puts DLSS back before a game starts when an update replaced it."
+        : Addon.AddonRegistration.WaterLauncherFound
+            ? "Show DLSS versions in WaterLauncher and put DLSS back automatically before a game starts."
+            : "WaterLauncher isn't on this PC. It's a game launcher that can use DLSS Updater as an add-on.";
+
+    [RelayCommand]
+    private void ToggleWaterLauncher()
+    {
+        try
+        {
+            if (WaterLauncherConnected) Addon.AddonRegistration.Unregister();
+            else Addon.AddonRegistration.Register();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Views.Dialog.Show("WaterLauncher", ex.Message);
+        }
+        WaterLauncherConnected = Addon.AddonRegistration.Registered;
+        OnPropertyChanged(nameof(WaterLauncherHint));
+    }
+
     [RelayCommand]
     private void OpenDataFolder() =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Root}\"") { UseShellExecute = true });

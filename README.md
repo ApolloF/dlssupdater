@@ -43,6 +43,18 @@ Games with anti-cheat (EAC, BattlEye, GameGuard, …) are flagged and need an ex
 
 `nvngx_dlssnr.dll` and `ReShade64.dll` (full add-on build) can't be redistributed. Put them next to `DLSSUpdater.exe` on first launch, or import them under **Settings → Local components**. They're stored in `%LocalAppData%\DLSSUpdater\components`.
 
+## WaterLauncher add-on
+
+DLSS Updater also works as an add-on for [WaterLauncher](https://github.com/ApolloF/WaterLauncher):
+
+- WaterLauncher shows each game's DLSS and OptiScaler versions.
+- Before a game starts, DLSS Updater puts DLSS back when a game update replaced it.
+- A game's page in WaterLauncher can update DLSS, install OptiScaler (with your DLSS Updater settings), restore the original DLSS files or open DLSS Updater.
+
+To connect them, use *Settings → General → Connect to WaterLauncher*, or run `DLSSUpdater.exe --register-addon`. This writes `%LOCALAPPDATA%\WaterLauncher\addons\dlssupdater\addon.json`. Then turn it on in WaterLauncher under *Settings → Add-ons*. WaterLauncher pins this exe's hash, so it asks again after an update.
+
+WaterLauncher runs `DLSSUpdater.exe --addon`, which has no window and speaks JSON-RPC on stdin/stdout ([protocol](https://github.com/ApolloF/WaterLauncher/blob/main/docs/addon-protocol.md)). It never runs elevated. Games with anti-cheat that you haven't confirmed in DLSS Updater are left alone.
+
 ## Build
 
 ```
