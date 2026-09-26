@@ -54,8 +54,9 @@ public static class FileUtil
         var fa = new FileInfo(a);
         var fb = new FileInfo(b);
         if (!fa.Exists || !fb.Exists || fa.Length != fb.Length) return false;
-        if (fa.LastWriteTimeUtc == fb.LastWriteTimeUtc) return true;
-        return Sha256(a) == Sha256(b);
+        // Content decides: two different builds can share size and timestamp (same install time,
+        // files written in the same clock tick), and then a swap would be skipped.
+        return HashCache.Get(a) == HashCache.Get(b);
     }
 
     /// <summary>Copies via a temp file next to the destination, then swaps it in. Preserves timestamps.</summary>
