@@ -1,4 +1,5 @@
 using DLSSUpdater.Core;
+using DLSSUpdater.Scan;
 using DLSSUpdater.ViewModels;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -87,5 +88,36 @@ public class FeatureTests
         Assert.Equal("Use global (On)", vs.Selected!.Label);
         vs.SetLoaded(D((0x00A879CF, 0x47814940), (0x005A375C, 0x99941284)), D(), false);
         Assert.Equal("Adaptive", vs.Selected!.Label);
+    }
+
+    private static List<DlssDll> Dlls(params string[] names) => names.Select(n => new DlssDll { Name = n, Path = n }).ToList();
+
+    [Theory]
+    [InlineData(new[] { "nvngx_dlss.dll" }, new string[0], GameFeatures.SR)]
+    [InlineData(new[] { "nvngx_dlss.dll", "nvngx_dlssd.dll", "nvngx_dlssg.dll" }, new string[0], GameFeatures.SR | GameFeatures.RR | GameFeatures.FG)]
+    [InlineData(new string[0], new[] { "sl.interposer.dll", "sl.dlss.dll", "sl.dlss_g.dll", "sl.reflex.dll", "sl.common.dll" },
+        GameFeatures.SR | GameFeatures.FG | GameFeatures.Reflex | GameFeatures.Streamline)]
+    [InlineData(new string[0], new string[0], GameFeatures.None)]
+    public void Features_FromGameFiles(string[] dlss, string[] sl, GameFeatures expected) =>
+        Assert.Equal(expected, GameInfo.FeaturesOf(Dlls(dlss), Dlls(sl)));
+
+    [Fact]
+    public void DriverProfile_GroupsOptionsTheGameCantUse()
+    {
+        var vm = new DriverProfileViewModel(@"C:\g\game.exe", "Game", GameFeatures.SR);
+        Assert.Equal(["nv-rr-preset", "nv-fg-preset", "nv-mfg"], vm.Other.Select(o => o.Topic).ToArray());
+        Assert.Contains(vm.Relevant, o => o.Topic == "nv-sr-preset");
+        Assert.Contains("Recommended", vm.Relevant.Single(o => o.Topic == "nv-smooth-motion").Note);
+        Assert.Contains("Ray Reconstruction", vm.Other.Single(o => o.Topic == "nv-rr-preset").Note);
+        Assert.StartsWith("Detected in the game files: DLSS Super Resolution", vm.FeatureSummary);
+
+        var fg = new DriverProfileViewModel(@"C:\g\game.exe", "Game", GameFeatures.SR | GameFeatures.FG, new Version(310, 4, 0, 0));
+        Assert.Equal(["nv-rr-preset"], fg.Other.Select(o => o.Topic).ToArray());
+        Assert.Contains("MFG capable", fg.FeatureSummary);
+        Assert.Contains("use that instead", fg.Relevant.Single(o => o.Topic == "nv-smooth-motion").Note);
+
+        var unknown = new DriverProfileViewModel(@"C:\g\game.exe", "Game");
+        Assert.Empty(unknown.Other);
+        Assert.Null(unknown.FeatureSummary);
     }
 }

@@ -59,7 +59,10 @@ public static class SettingsOptions
 
     public static IniOptionViewModel[] Nr(ObservableCollection<IniOverride> o) =>
     [
-        IniOptionViewModel.Toggle("Neural rendering", "Run the DLSS 5 NR model (nvngx_dlssnr.dll).", "DlssNr", "Enabled", "true", o).About("nr-enabled"),
+        new IniOptionViewModel("Neural rendering", "Run the DLSS 5 NR model (nvngx_dlssnr.dll).", "DlssNr", "Enabled", o,
+            C("Automatic", null, "On when the DLSSNR runtime is installed with OptiScaler; upstream default (off) otherwise."),
+            C("On", "true", "Always write Enabled=true."),
+            C("Off", "false", "Keep NR off even with the runtime installed; toggle it in the OptiScaler menu when you want it.")).About("nr-enabled"),
         IniOptionViewModel.Toggle("Run before upscaling", "Edit the low-res input before SR / RR instead of the upscaled output.", "DlssNr", "RunBeforeSR", "true", o).About("nr-before-sr"),
         IniOptionViewModel.Toggle("Apply to finished picture", "Apply after the game's lighting and effects (DX12 only, can touch the HUD).", "DlssNr", "FinishedPicture", "true", o).About("nr-finished"),
         new IniOptionViewModel("Passes", "Model layers per frame.", "DlssNr", "Passes", o,

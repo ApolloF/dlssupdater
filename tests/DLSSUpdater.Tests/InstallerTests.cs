@@ -10,7 +10,7 @@ public class InstallerTests : IDisposable
     private readonly string _target;
     private readonly ComponentStore _store;
 
-    private const string ReleaseIni = "[Menu]\nShortcutKey=auto\n[Plugins]\nLoadReshade=auto\n[Hotfix]\nManualInputPolling=auto\n";
+    private const string ReleaseIni = "[Menu]\nShortcutKey=auto\n[Plugins]\nLoadReshade=auto\n[Hotfix]\nManualInputPolling=auto\n[DlssNr]\nEnabled=auto\n";
 
     public InstallerTests()
     {
@@ -87,7 +87,7 @@ public class InstallerTests : IDisposable
     private static InstallOptions Full => new()
     {
         Opti = true, ReShade = true, Mfg = true, DlssNr = true, Dlss = true, AddMissingDlss = true,
-        Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = true,
+        Proxy = "dxgi.dll", Overrides = ConfigProfile.Recommended(), CarryOverIni = true,
     };
 
     private string T(string rel) => File.ReadAllText(Path.Combine(_target, rel));
@@ -276,7 +276,7 @@ public class InstallerTests : IDisposable
     public async Task IniModes(bool carryOver, bool overwrite, string menuKey, string? polling)
     {
         Write(Path.Combine(_target, "OptiScaler.ini"), "[Menu]\nShortcutKey=0x24\n[Hotfix]\nManualInputPolling=true\n");
-        var o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = carryOver, OverwriteIni = overwrite };
+        var o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Recommended(), CarryOverIni = carryOver, OverwriteIni = overwrite };
         await new Installer(_store).InstallAsync(Game(), _target, o, null, default);
 
         var ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
@@ -304,5 +304,194 @@ public class InstallerTests : IDisposable
 
         await installer.UninstallAsync(Game(), _target, default);
         Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task UpstreamDefaults_OnlyRequiredKeys_FollowComponents()
+    {
+        File.Delete(Path.Combine(_target, "OptiScaler.ini"));
+        var installer = new Installer(_store);
+        var o = new InstallOptions { Opti = true, ReShade = true, DlssNr = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults() };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+
+        var expected = IniFile.Parse(ReleaseIni);
+        expected.Set("Plugins", "LoadReshade", "true");
+        expected.Set("DlssNr", "Enabled", "true");
+        Assert.Equal(expected.ToString(), T("OptiScaler.ini"));
+
+        // ReShade and DLSSNR dropped: both keys go back to the release value.
+        o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults() };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal(ReleaseIni, T("OptiScaler.ini"));
+
+        // An explicit profile value wins over the required one.
+        o = new InstallOptions { Opti = true, DlssNr = true, Proxy = "dxgi.dll", Overrides = [new("DlssNr", "Enabled", "false")] };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("false", IniFile.Load(Path.Combine(_target, "OptiScaler.ini")).Get("DlssNr", "Enabled"));
+    }
+
+    [Fact]
+    public void RecommendedPreset_IsBuiltIn_AndNotSaved()
+    {
+        var s = new AppSettings();
+        Assert.Empty(s.IniOverrides);
+        Assert.Empty(s.ReShadeOverrides);
+        var rec = Assert.Single(s.AllPresets);
+        Assert.True(rec.BuiltIn);
+        Assert.Contains(rec.Opti, x => x.Id == "Menu/ShortcutKey" && x.Value == "0x2e");
+
+        s.Games["g"] = new GameOverride { Preset = ConfigProfile.RecommendedName };
+        Assert.Same(rec.Name, s.PresetFor("g")!.Name);
+        s.Save();
+        Assert.Empty(AppSettings.Load().Presets);
+    }
+
+    [Fact]
+    public async Task AddsSr_WithoutReplaceToggle_AndKeepsItCurrent()
+    {
+        File.Delete(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"));
+        File.Delete(Path.Combine(_target, "nvngx_dlssg.dll"));
+        var installer = new Installer(_store);
+        var o = new InstallOptions { Opti = true, AddMissingDlss = true, Proxy = "dxgi.dll" };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("NEW-nvngx_dlss.dll", T("nvngx_dlss.dll"));
+        Assert.False(InstallManifest.Load(_target)!.Dlss);
+
+        SeedDlss("v310.10.0", "NEWER");
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("NEWER-nvngx_dlss.dll", T("nvngx_dlss.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task ReplaceOff_LeavesGameDlssAlone()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Opti = true, AddMissingDlss = true, Proxy = "dxgi.dll" }, null, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));  // game ships SR elsewhere
+    }
+
+    [Fact]
+    public async Task ReShade_DownloadedBuildUsed_WhenNothingImported()
+    {
+        File.Delete(Path.Combine(AppPaths.Components, ComponentStore.ReShadeFile));
+        var r = new ReleaseInfo { Tag = "6.8.0" };
+        Write(Path.Combine(ComponentStore.TagDir(Component.ReShade, r.Tag), ComponentStore.ReShadeFile), "RESHADE-AUTO");
+        ComponentStore.MarkComplete(Component.ReShade, r);
+        _store.ReShade = r;
+
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { ReShade = true }, null, default);
+        Assert.Equal("RESHADE-AUTO", T("ReShade64.dll"));
+
+        // Auto download off and nothing imported: a clear error instead of a silent skip.
+        _store.AutoReShade = () => false;
+        await Assert.ThrowsAsync<FileNotFoundException>(() => installer.InstallAsync(Game(), _target, new InstallOptions { ReShade = true }, null, default));
+    }
+
+    [Fact]
+    public void ReShade_ExtractsDllFromSetupWithPrependedExe()
+    {
+        var zip = new MemoryStream();
+        using (var a = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, body) in new[] { ("ReShade32.dll", "R32"), ("ReShade64.dll", "R64"), ("ReShade64.json", "{}") })
+            {
+                using var w = new StreamWriter(a.CreateEntry(name).Open());
+                w.Write(body);
+            }
+        }
+        var setup = Path.Combine(_tmp, "ReShade_Setup_6.8.0_Addon.exe");
+        using (var f = File.Create(setup))
+        {
+            f.Write(System.Text.Encoding.ASCII.GetBytes("MZ" + new string('\0', 4094)));
+            zip.Position = 0;
+            zip.CopyTo(f);
+        }
+        var dest = Path.Combine(_tmp, "out", "ReShade64.dll");
+        ComponentStore.ExtractReShade(setup, dest);
+        Assert.Equal("R64", File.ReadAllText(dest));
+    }
+
+    [Theory]
+    [InlineData("<a href=\"/downloads/ReShade_Setup_6.8.0.exe\">x</a><a href=\"/downloads/ReShade_Setup_6.8.0_Addon.exe\">y</a>", "6.8.0")]
+    [InlineData("downloads/ReShade_Setup_6.7.3_Addon.exe downloads/ReShade_Setup_6.10.1_Addon.exe", "6.10.1")]
+    [InlineData("<html>no links</html>", null)]
+    public void ReShade_ParsesDownloadPage(string html, string? expected) => Assert.Equal(expected, ComponentStore.ParseReShadePage(html));
+
+    private static InstallOptions ReShadeOnly(string proxy = "dxgi.dll") => new()
+    {
+        Mode = InstallMode.ReShadeOnly, ReShade = true, Mfg = true, Proxy = proxy,
+        ReShadeOverrides = [new("OVERLAY", "TutorialProgress", "4")],
+    };
+
+    [Fact]
+    public async Task ReShadeOnly_InstallsReShadeAsProxy_WithoutOptiScaler()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default);
+
+        Assert.Equal("RESHADE", T("dxgi.dll"));                     // other mod's dxgi.dll went to the backup
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("4", IniFile.Load(Path.Combine(_target, "ReShade.ini")).Get("OVERLAY", "TutorialProgress"));
+        Assert.False(File.Exists(Path.Combine(_target, "ReShade64.dll")));
+        Assert.False(Directory.Exists(Path.Combine(_target, "OptiScaler")));
+        Assert.Equal("[Hotfix]\nManualInputPolling=true\n", T("OptiScaler.ini")); // untouched
+        var m = InstallManifest.Load(_target)!;
+        Assert.Equal(InstallMode.ReShadeOnly, m.Mode);
+        Assert.False(m.Opti);
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task SwitchingModes_LeavesNoStrayFiles()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        var opti = new InstallOptions
+        {
+            Opti = true, ReShade = true, Mfg = true, DlssNr = true, Proxy = "winmm.dll", Overrides = ConfigProfile.Defaults(),
+        };
+
+        await installer.InstallAsync(Game(), _target, opti, null, default);
+        Assert.Equal("OPTI-1", T("winmm.dll"));
+        Assert.Equal("RESHADE", T("ReShade64.dll"));
+
+        // OptiScaler -> ReShade-only on dxgi.dll: OptiScaler, its ini and DLSSNR go, the hand-made ini comes back.
+        await installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default);
+        Assert.False(File.Exists(Path.Combine(_target, "winmm.dll")));
+        Assert.False(File.Exists(Path.Combine(_target, "ReShade64.dll")));
+        Assert.False(File.Exists(Path.Combine(_target, ComponentStore.DlssNrFile)));
+        Assert.False(Directory.Exists(Path.Combine(_target, "OptiScaler")));
+        Assert.False(Directory.Exists(Path.Combine(_target, "Licenses")));
+        Assert.Equal("[Hotfix]\nManualInputPolling=true\n", T("OptiScaler.ini"));
+        Assert.Equal("RESHADE", T("dxgi.dll"));
+        var m = InstallManifest.Load(_target)!;
+        Assert.False(m.Opti);
+        Assert.False(m.DlssNr);
+        Assert.Empty(m.OptiIni);
+
+        // Back to OptiScaler on winmm.dll: the ReShade proxy on dxgi.dll is removed and the other mod's dxgi.dll restored.
+        await installer.InstallAsync(Game(), _target, opti, null, default);
+        Assert.Equal("OTHER-MOD", T("dxgi.dll"));
+        Assert.Equal("OPTI-1", T("winmm.dll"));
+        Assert.Equal("RESHADE", T("ReShade64.dll"));
+        Assert.Equal(InstallMode.OptiScaler, InstallManifest.Load(_target)!.Mode);
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task ReShadeOnly_WithoutReShade_Throws()
+    {
+        var o = new InstallOptions { Mode = InstallMode.ReShadeOnly, Mfg = true };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new Installer(_store).InstallAsync(Game(), _target, o, null, default));
     }
 }

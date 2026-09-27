@@ -12,6 +12,8 @@ public sealed class GameOverride
     public string? DlssTag { get; set; }
     /// <summary>Config preset used for this game; null uses the current settings.</summary>
     public string? Preset { get; set; }
+    /// <summary>OptiScaler or ReShade-only for this game; null follows the default.</summary>
+    public InstallMode? Mode { get; set; }
 }
 
 /// <summary>A named snapshot of the OptiScaler.ini and ReShade.ini settings (incl. keybinds and options).</summary>
@@ -20,6 +22,8 @@ public sealed class ConfigPreset
     public string Name { get; set; } = "";
     public List<IniOverride> Opti { get; set; } = [];
     public List<IniOverride> ReShade { get; set; } = [];
+    /// <summary>Shipped with the app (the Recommended preset): can be loaded and assigned, not saved over or deleted.</summary>
+    [JsonIgnore] public bool BuiltIn { get; init; }
 }
 
 public sealed class AppSettings
@@ -32,9 +36,17 @@ public sealed class AppSettings
     public List<string> HiddenGames { get; set; } = [];
     public Dictionary<string, GameOverride> Games { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Names ReShade loads under when it is the proxy itself (ReShade-only mode).</summary>
+    public static readonly string[] ReShadeProxyNames =
+        ["dxgi.dll", "d3d12.dll", "d3d11.dll", "d3d9.dll", "dinput8.dll", "opengl32.dll"];
+
     public string DefaultProxy { get; set; } = "dxgi.dll";
+    /// <summary>What a new install puts in: OptiScaler-NR (the main purpose) or ReShade with add-ons only.</summary>
+    public InstallMode DefaultMode { get; set; } = InstallMode.OptiScaler;
     public bool IncludePrereleases { get; set; } = true;
     public bool InstallReShade { get; set; } = true;
+    /// <summary>Download the ReShade add-on build from reshade.me when no ReShade64.dll was imported.</summary>
+    public bool AutoDownloadReShade { get; set; } = true;
     public bool InstallMfgUnlock { get; set; } = true;
     public bool InstallDlssNr { get; set; } = true;
     public bool AddMissingDlss { get; set; } = true;
@@ -48,8 +60,12 @@ public sealed class AppSettings
     public bool InstallStreamline { get; set; }
     public List<ConfigPreset> Presets { get; set; } = [];
 
+    /// <summary>Built-in presets first, then the user's.</summary>
+    [JsonIgnore]
+    public IEnumerable<ConfigPreset> AllPresets => [ConfigProfile.RecommendedPreset(), .. Presets];
+
     public ConfigPreset? PresetFor(string gameId) =>
-        Games.GetValueOrDefault(gameId)?.Preset is { } name ? Presets.FirstOrDefault(p => p.Name == name) : null;
+        Games.GetValueOrDefault(gameId)?.Preset is { } name ? AllPresets.FirstOrDefault(p => p.Name == name) : null;
     /// <summary>DLSS release tag to install; null = latest.</summary>
     public string? DlssTag { get; set; }
 
@@ -71,6 +87,7 @@ public sealed class AppSettings
                     s.Games = new Dictionary<string, GameOverride>(s.Games, StringComparer.OrdinalIgnoreCase);
                     if (!s.CarryOverGameIni && s.IniMode == "keep") s.IniMode = "fresh";
                     s.CarryOverGameIni = true;
+                    s.Presets.RemoveAll(p => p.Name.Equals(ConfigProfile.RecommendedName, StringComparison.OrdinalIgnoreCase));
                     return s;
                 }
             }

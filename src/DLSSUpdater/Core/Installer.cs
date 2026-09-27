@@ -1,17 +1,25 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json.Serialization;
 using DLSSUpdater.Scan;
 
 namespace DLSSUpdater.Core;
 
+/// <summary>OptiScaler-NR loads ReShade (default), or ReShade alone is the proxy and loads the add-ons.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<InstallMode>))]
+public enum InstallMode { OptiScaler, ReShadeOnly }
+
 public sealed class InstallOptions
 {
+    public InstallMode Mode { get; init; }
+    public bool ReShadeOnly => Mode == InstallMode.ReShadeOnly;
     public bool Opti { get; init; }
     public bool ReShade { get; init; }
     public bool Mfg { get; init; }
     public bool DlssNr { get; init; }
     public bool Dlss { get; init; }
+    /// <summary>Put nvngx_dlss.dll next to OptiScaler when the game has none (independent of <see cref="Dlss"/>).</summary>
     public bool AddMissingDlss { get; init; }
     /// <summary>DLSS release to install; null = latest (never downgrades a newer game DLL).</summary>
     public string? DlssTag { get; init; }
@@ -66,16 +74,18 @@ public sealed class Installer(ComponentStore store)
 
     private async Task InstallCoreAsync(GameInfo game, string targetDir, InstallOptions o, IProgress<TransferProgress>? progress, CancellationToken ct)
     {
+        if (o.ReShadeOnly && !o.ReShade) throw new InvalidOperationException("ReShade-only mode installs ReShade as the proxy; ReShade can't be left out.");
         // Fetch everything first so a network failure never leaves a half-installed game.
-        var pkg = o.Opti ? await store.EnsureOptiAsync(progress, ct) : null;
+        var pkg = o.Opti && !o.ReShadeOnly ? await store.EnsureOptiAsync(progress, ct) : null;
+        var dlssNr = o.DlssNr && !o.ReShadeOnly;
         var mfg = o.Mfg ? await store.EnsureMfgAsync(progress, ct) : null;
-        var dlss = o.Dlss ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
+        var addMissing = o.AddMissingDlss && o.Opti;
+        var dlss = o.Dlss || addMissing ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
         var sl = o.Streamline && game.Streamline.Count > 0 ? await store.EnsureStreamlineAsync(progress, ct) : null;
         if (o.Streamline && game.Streamline.Count == 0) Log.Info($"{game.Name}: no Streamline files in this game, skipped");
-        if (o.DlssNr && !File.Exists(store.DlssNrPath))
+        if (dlssNr && !File.Exists(store.DlssNrPath))
             throw new FileNotFoundException("nvngx_dlssnr.dll has not been imported (Settings → Components).");
-        if (o.ReShade && !File.Exists(store.ReShadePath))
-            throw new FileNotFoundException("ReShade64.dll has not been imported (Settings → Components).");
+        var reshade = o.ReShade ? await store.EnsureReShadeFileAsync(progress, ct) : null;
 
         progress?.Report(new TransferProgress($"Installing to {game.Name}", null));
         var m = InstallManifest.Load(targetDir) ?? new InstallManifest();
@@ -86,6 +96,10 @@ public sealed class Installer(ComponentStore store)
         {
             try
             {
+                if (o.ReShadeOnly) RemoveOpti(ctx, o.Proxy);
+                else if (m.Mode == InstallMode.ReShadeOnly && (pkg is not null || reshade is not null)) RemoveReShadeProxy(ctx, o.Proxy);
+                if (o.ReShadeOnly || pkg is not null) m.Mode = o.Mode;
+
                 if (pkg is not null)
                 {
                     InstallOpti(ctx, pkg, o);
@@ -93,12 +107,18 @@ public sealed class Installer(ComponentStore store)
                     m.OptiTag = store.Opti?.Tag;
                     m.Proxy = o.Proxy;
                 }
-                if (o.ReShade)
+                if (reshade is not null)
                 {
                     WriteReShadeIni(ctx, o);
-                    Place(ctx, store.ReShadePath, Path.Combine(targetDir, ComponentStore.ReShadeFile));
+                    // ReShade-only: ReShade itself is the proxy the game loads; otherwise OptiScaler loads ReShade64.dll.
+                    Place(ctx, reshade, Path.Combine(targetDir, o.ReShadeOnly ? o.Proxy : ComponentStore.ReShadeFile));
+                    if (o.ReShadeOnly)
+                    {
+                        m.Proxy = o.Proxy;
+                        Log.Info($"  {o.Proxy} ← ReShade (no OptiScaler)");
+                    }
                     m.ReShade = true;
-                    m.ReShadeSha = HashCache.Get(store.ReShadePath);
+                    m.ReShadeSha = HashCache.Get(reshade);
                 }
                 if (mfg is not null)
                 {
@@ -106,7 +126,7 @@ public sealed class Installer(ComponentStore store)
                     m.Mfg = true;
                     m.MfgTag = store.Mfg?.Tag ?? "local";
                 }
-                if (o.DlssNr)
+                if (dlssNr)
                 {
                     Place(ctx, store.DlssNrPath, Path.Combine(targetDir, ComponentStore.DlssNrFile));
                     m.DlssNr = true;
@@ -114,10 +134,13 @@ public sealed class Installer(ComponentStore store)
                 }
                 if (dlss is not null)
                 {
-                    SwapDlss(ctx, dlss, o.AddMissingDlss, exact: o.DlssTag is not null);
-                    m.Dlss = true;
-                    m.DlssTag = store.DlssFor(o.DlssTag)?.Tag;
-                    m.DlssPinned = o.DlssTag is not null;
+                    SwapDlss(ctx, dlss, replace: o.Dlss, addMissing, exact: o.DlssTag is not null);
+                    if (o.Dlss)
+                    {
+                        m.Dlss = true;
+                        m.DlssTag = store.DlssFor(o.DlssTag)?.Tag;
+                        m.DlssPinned = o.DlssTag is not null;
+                    }
                 }
                 if (sl is not null)
                 {
@@ -178,14 +201,15 @@ public sealed class Installer(ComponentStore store)
         var releaseIni = File.ReadAllText(Path.Combine(pkg, "OptiScaler.ini"));
         string? currentIni = File.Exists(iniPath) ? File.ReadAllText(iniPath) : null;
         if (currentIni is not null && !m.Owns(ctx.Rel(iniPath))) Backup(ctx, iniPath, "file", copy: true);
+        var profile = ConfigProfile.WithRequired(o.Overrides, o);
         if (currentIni is not null && m.Owns(ctx.Rel(iniPath)) && m.OptiIni.Count == 0)
         {
             // Installs from 1.0.0 didn't record what they wrote; values still equal to the profile are ours.
             var cur = IniFile.Parse(currentIni);
-            foreach (var ov in o.Overrides)
+            foreach (var ov in profile)
                 if (string.Equals(cur.Get(ov.Section, ov.Key), ov.Value, StringComparison.OrdinalIgnoreCase)) m.OptiIni[ov.Id] = ov.Value;
         }
-        var merged = ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni, m.OptiIni, o.OverwriteIni);
+        var merged = ConfigProfile.Merge(releaseIni, currentIni, profile, o.CarryOverIni, m.OptiIni, o.OverwriteIni);
         FileUtil.AtomicWriteText(iniPath, merged.Text);
         m.OptiIni = merged.Applied;
         m.AddFile(ctx.Rel(iniPath));
@@ -257,13 +281,17 @@ public sealed class Installer(ComponentStore store)
         }
     }
 
-    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool addMissing, bool exact = false)
+    /// <summary>
+    /// <paramref name="replace"/>: update every DLSS dll the game has. <paramref name="addMissing"/>: give OptiScaler an
+    /// nvngx_dlss.dll when the game ships none (or only the one we added earlier, which is then kept current).
+    /// </summary>
+    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool replace, bool addMissing, bool exact = false)
     {
         var m = ctx.M;
         var scan = new GameInfo { Root = ctx.Root };
         GameInspector.Inspect(scan);
 
-        foreach (var dll in scan.Dlss)
+        foreach (var dll in replace ? scan.Dlss : [])
         {
             if (FileUtil.IsUnder(dll.Path, InstallManifest.DirFor(ctx.Target))) continue;
             if (!latest.TryGetValue(dll.Name, out var src)) continue;
@@ -281,11 +309,14 @@ public sealed class Installer(ComponentStore store)
             Log.Info($"  {rel}: {FileUtil.Format(dll.Version)} → {FileUtil.Format(newVer)}");
         }
 
-        if (addMissing && latest.ContainsKey("nvngx_dlss.dll") && !scan.Dlss.Any(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)))
+        var sr = scan.Dlss.Where(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (addMissing && latest.TryGetValue("nvngx_dlss.dll", out var srSrc) && sr.All(d => m.Owns(ctx.Rel(d.Path))))
         {
             var dest = Path.Combine(ctx.Target, "nvngx_dlss.dll");
-            Place(ctx, latest["nvngx_dlss.dll"], dest);
-            Log.Info($"  added {ctx.Rel(dest)}");
+            var had = File.Exists(dest);
+            if (had && FileUtil.SameFile(srSrc, dest)) return;
+            Place(ctx, srSrc, dest);
+            Log.Info($"  {(had ? "updated" : "added")} {ctx.Rel(dest)}");
         }
     }
 
@@ -300,6 +331,58 @@ public sealed class Installer(ComponentStore store)
         }
         FileUtil.AtomicCopy(src, dest);
         ctx.M.AddFile(rel);
+    }
+
+    /// <summary>
+    /// Switching to ReShade-only: takes out everything an earlier OptiScaler install of ours put here (proxy, package
+    /// folders, OptiScaler.ini, ReShade64.dll, DLSSNR) and puts back what those files replaced.
+    /// </summary>
+    private static void RemoveOpti(Ctx ctx, string newProxy)
+    {
+        var m = ctx.M;
+        if (m.Mode == InstallMode.OptiScaler && m.Opti && m.Proxy is { } p && !p.Equals(newProxy, StringComparison.OrdinalIgnoreCase))
+            RemoveOwned(ctx, Path.Combine(ctx.Target, p));
+        foreach (var dir in PackageDirs)
+        {
+            var rel = ctx.Rel(Path.Combine(ctx.Target, dir));
+            if (m.Dirs.Remove(m.Dirs.FirstOrDefault(d => d.Equals(rel, StringComparison.OrdinalIgnoreCase)) ?? ""))
+            {
+                if (Directory.Exists(ctx.Full(rel))) Directory.Delete(ctx.Full(rel), true);
+                continue;
+            }
+            foreach (var f in m.Files.Where(f => f.StartsWith(rel + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)).ToList())
+                RemoveOwned(ctx, ctx.Full(f));
+        }
+        foreach (var name in new[] { "OptiScaler.ini", ComponentStore.ReShadeFile, ComponentStore.DlssNrFile })
+            RemoveOwned(ctx, Path.Combine(ctx.Target, name));
+        if (m.Opti || m.DlssNr) Log.Info("  OptiScaler-NR removed (ReShade-only)");
+        m.Opti = false;
+        m.OptiTag = null;
+        m.OptiIni.Clear();
+        m.DlssNr = false;
+        m.DlssNrSha = null;
+    }
+
+    /// <summary>Switching back from ReShade-only: the ReShade proxy goes unless OptiScaler takes over the same name.</summary>
+    private static void RemoveReShadeProxy(Ctx ctx, string newProxy)
+    {
+        if (ctx.M.Proxy is { } p && !p.Equals(newProxy, StringComparison.OrdinalIgnoreCase))
+            RemoveOwned(ctx, Path.Combine(ctx.Target, p));
+    }
+
+    /// <summary>Deletes a file we placed and restores whatever it replaced. Files we don't own are left alone.</summary>
+    private static void RemoveOwned(Ctx ctx, string full)
+    {
+        var rel = ctx.Rel(full);
+        if (!ctx.M.Owns(rel)) return;
+        TryDelete(full);
+        ctx.M.Files.RemoveAll(f => f.Equals(rel, StringComparison.OrdinalIgnoreCase));
+        if (ctx.M.BackupOf(rel) is { } b)
+        {
+            Restore(ctx, b);
+            ctx.M.Backups.Remove(b);
+        }
+        FileUtil.TryDeleteEmptyDir(Path.GetDirectoryName(full)!);
     }
 
     /// <summary>Removes a conflicting file: deleted if we placed it, otherwise moved to the backup.</summary>
@@ -400,6 +483,9 @@ public sealed class Installer(ComponentStore store)
 
     public static bool IsOptiScaler(string path) =>
         string.Equals(FileUtil.OriginalFilename(path), "OptiScaler.dll", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsReShade(string path) =>
+        FileUtil.OriginalFilename(path) is { } n && n.StartsWith("ReShade", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSharingViolation(IOException ex) => (ex.HResult & 0xFFFF) is 32 or 33;
 

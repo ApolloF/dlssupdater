@@ -59,14 +59,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string _tab = "General";
 
-    [ObservableProperty] private string? _selectedPreset;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDeletePreset))]
+    private string? _selectedPreset;
 
     public ObservableCollection<string> PresetNames { get; } = [];
+
+    /// <summary>User presets can be deleted; built-in ones can't.</summary>
+    public bool CanDeletePreset => SelectedPreset is { } n && Settings.Presets.Any(p => p.Name == n);
 
     partial void OnSelectedPresetChanged(string? value)
     {
         if (value is null || _reloading) return;
-        var p = Settings.Presets.FirstOrDefault(x => x.Name == value);
+        var p = Settings.AllPresets.FirstOrDefault(x => x.Name == value);
         if (p is null) return;
         Replace(Overrides, p.Opti);
         Replace(ReShadeOverrides, p.ReShade);
@@ -94,6 +99,11 @@ public sealed partial class SettingsViewModel : ObservableObject
             "Saves the current OptiScaler.ini and ReShade.ini settings, keybinds and options under a name. " +
             "Presets can be loaded here or assigned to single games.", SelectedPreset ?? "My preset");
         if (name is null) return;
+        if (Settings.AllPresets.Any(p => p.BuiltIn && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Views.Dialog.Show("Save preset", $"'{name}' is built in and can't be replaced. Pick another name.");
+            return;
+        }
         Settings.Presets.RemoveAll(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         Settings.Presets.Add(new ConfigPreset { Name = name, Opti = Copy(Overrides), ReShade = Copy(ReShadeOverrides) });
         Save();
@@ -106,6 +116,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void DeletePreset()
     {
         if (SelectedPreset is not { } name) return;
+        if (Settings.AllPresets.Any(p => p.BuiltIn && p.Name == name))
+        {
+            Views.Dialog.Show("Delete preset", $"'{name}' is built in and can't be deleted.");
+            return;
+        }
         if (!Views.Dialog.Confirm("Delete preset", $"Delete preset '{name}'? Games using it fall back to the current settings.", "Delete", danger: true)) return;
         Settings.Presets.RemoveAll(p => p.Name == name);
         foreach (var g in Settings.Games.Values.Where(g => g.Preset == name)) g.Preset = null;
@@ -118,13 +133,26 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         _reloading = true;
         PresetNames.Clear();
-        foreach (var p in Settings.Presets) PresetNames.Add(p.Name);
+        foreach (var p in Settings.AllPresets) PresetNames.Add(p.Name);
         SelectedPreset = select;
         _reloading = false;
     }
     [ObservableProperty] private KeybindViewModel? _capturing;
 
     // ---------- general ----------
+
+    public IReadOnlyList<ModeChoice> Modes => ModeChoice.All;
+
+    public ModeChoice DefaultMode
+    {
+        get => ModeChoice.All.First(m => m.Mode == Settings.DefaultMode);
+        set
+        {
+            if (value is null) return;
+            Settings.DefaultMode = value.Mode;
+            Save();
+        }
+    }
 
     public string DefaultProxy
     {
@@ -186,7 +214,48 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     public string DlssNrInfo => Describe(_main.S.Store.DlssNrPath, _main.S.DlssNrSha, true);
-    public string ReShadeInfo => Describe(_main.S.Store.ReShadePath, _main.S.ReShadeSha, false);
+    public string ReShadeInfo
+    {
+        get
+        {
+            var store = _main.S.Store;
+            if (store.ReShadeImported) return "Imported  ·  " + Describe(store.ReShadePath, _main.S.ReShadeSha, false);
+            if (!AutoDownloadReShade) return "Not imported";
+            if (store.CurrentReShadePath is { } path) return "Downloaded from reshade.me (add-on build)  ·  " + Describe(path, _main.S.ReShadeSha, false);
+            return store.ReShade is { } r ? $"Downloaded from reshade.me on first install (add-on build {r.Tag})" : "Downloaded from reshade.me on first install";
+        }
+    }
+
+    public bool ReShadeImported => _main.S.Store.ReShadeImported;
+
+    public bool AutoDownloadReShade
+    {
+        get => Settings.AutoDownloadReShade;
+        set
+        {
+            Settings.AutoDownloadReShade = value;
+            Save();
+            _ = RefreshReShadeAsync();
+        }
+    }
+
+    /// <summary>Drops the imported ReShade64.dll so installs use the automatic download again.</summary>
+    [RelayCommand]
+    private async Task UseReShadeDownload()
+    {
+        try { File.Delete(_main.S.Store.ReShadePath); }
+        catch (IOException ex) { Log.Error("Could not remove the imported ReShade64.dll", ex); }
+        Log.Info("Removed imported ReShade64.dll; installs use the reshade.me download");
+        await RefreshReShadeAsync();
+    }
+
+    private async Task RefreshReShadeAsync()
+    {
+        await _main.RefreshLocalComponentsAsync();
+        OnPropertyChanged(nameof(ReShadeInfo));
+        OnPropertyChanged(nameof(ReShadeImported));
+        OnPropertyChanged(nameof(AutoDownloadReShade));
+    }
 
     private static string Describe(string path, string? sha, bool known)
     {
@@ -262,7 +331,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void ResetAll()
     {
         if (!Views.Dialog.Confirm("Reset to defaults",
-                "Reset all OptiScaler.ini and ReShade.ini settings, keybinds and options to the app defaults? Saved presets are kept.", "Reset", danger: true))
+                "Reset all OptiScaler.ini and ReShade.ini settings, keybinds and options to the upstream defaults (what OptiScaler-NR, ReShade and MFG Unlock ship with)? " +
+                "Saved presets are kept; load '" + ConfigProfile.RecommendedName + "' for the tuned setup.", "Reset", danger: true))
             return;
         ResetOverrides();
         _reloading = true;
@@ -305,6 +375,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             await _main.RefreshLocalComponentsAsync();
             OnPropertyChanged(nameof(DlssNrInfo));
             OnPropertyChanged(nameof(ReShadeInfo));
+            OnPropertyChanged(nameof(ReShadeImported));
         }
         catch (IOException ex) { Log.Error($"Import of {fileName} failed", ex); }
     }
@@ -362,7 +433,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         foreach (var p in Settings.ManualGames) Folders.Add(new FolderEntry(p, "Game"));
         foreach (var p in Settings.LibraryRoots) Folders.Add(new FolderEntry(p, "Library"));
 
-        ReloadPresets(SelectedPreset is { } sp && Settings.Presets.Any(p => p.Name == sp) ? sp : null);
+        ReloadPresets(SelectedPreset is { } sp && Settings.AllPresets.Any(p => p.Name == sp) ? sp : null);
 
         DlssChoices.Clear();
         var store = _main.S.Store;

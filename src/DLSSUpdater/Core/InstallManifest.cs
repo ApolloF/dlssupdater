@@ -23,7 +23,9 @@ public sealed class InstallManifest
     public int Schema { get; set; } = 1;
     /// <summary>Game root relative to the target dir (e.g. "..\..\..").</summary>
     public string RootRel { get; set; } = ".";
+    /// <summary>Proxy the game loads: OptiScaler's, or ReShade's in ReShade-only mode.</summary>
     public string? Proxy { get; set; }
+    public InstallMode Mode { get; set; }
 
     public bool Opti { get; set; }
     public bool ReShade { get; set; }

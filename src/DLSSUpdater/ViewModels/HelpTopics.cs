@@ -15,6 +15,10 @@ public static class HelpTopics
     public static readonly HelpTopic[] All =
     [
         // ---------- General ----------
+        new("install-mode", "General", "Install mode",
+            "OptiScaler-NR (default) is the main use: OptiScaler is the proxy, loads ReShade and its add-ons, and runs DLSSNR. " +
+            "ReShade + add-ons installs ReShade itself as the proxy (dxgi.dll by default) with MFG Unlock, the DLSS and Streamline updates, and no OptiScaler or DLSSNR. " +
+            "Switching a game between the two removes the other mode's files and puts back what they replaced. Each game can use its own mode."),
         new("proxy", "General", "Proxy DLL name",
             "The file name OptiScaler is saved as so the game loads it. dxgi.dll works for most DX12 games. " +
             "Pick another (winmm.dll, version.dll, dbghelp.dll) when the game or another mod already needs dxgi.dll, " +
@@ -35,9 +39,15 @@ public static class HelpTopics
         new("ini-mode", "General", "Existing game configs",
             "What happens when a game already has an OptiScaler.ini or ReShade.ini. The app always remembers which values it wrote itself, " +
             "and new keys from a new OptiScaler release are always added. Whatever is replaced is backed up first and Uninstall restores it."),
+        new("presets", "General", "Presets and defaults",
+            "Out of the box every setting is what the upstream projects ship: the release's OptiScaler.ini untouched, ReShade and MFG Unlock without an ini. " +
+            "Only two keys are added because the components would otherwise do nothing: LoadReshade=true when ReShade is installed with OptiScaler and " +
+            "[DlssNr] Enabled=true when the DLSSNR runtime is installed. '" + Core.ConfigProfile.RecommendedName + "' is a built-in preset with the tuned setup " +
+            "(DLSS upscaler, preset override, Delete menu key, DLSSNR strengths and HDR tone mapping, ReShade tutorial skipped). Load it here or assign it to single games."),
         new("local-components", "General", "Local components",
-            "nvngx_dlssnr.dll (DLSS 5 neural rendering model, ShortFuse compat build for RTX 20–40) and ReShade64.dll (add-on build) can't be downloaded " +
-            "automatically, so they are imported once and copied into each game. Import a newer file here and Update all rolls it out."),
+            "nvngx_dlssnr.dll (DLSS 5 neural rendering model, ShortFuse compat build for RTX 20–40) can't be downloaded automatically, so it is imported once " +
+            "and copied into each game. ReShade64.dll (add-on build) is taken from the official setup on reshade.me whenever a new version is out; an imported " +
+            "ReShade64.dll replaces the download until you press Use download. Import a newer file here and Update all rolls it out."),
 
         // ---------- Keybinds ----------
         new("keybinds", "Keybinds", "Keybinds",
@@ -60,7 +70,8 @@ public static class HelpTopics
         // ---------- DLSSNR ----------
         new("nr-enabled", "DLSSNR", "Neural rendering",
             "DLSS 5 neural rendering: NVIDIA's model synthesises detail and lighting on top of the upscaled image, before frame generation sees it. " +
-            "Needs nvngx_dlssnr.dll and an NVIDIA driver with NGX feature 18. Toggle in-game with the DLSSNR key. Undocumented feature, so results vary per game."),
+            "Needs nvngx_dlssnr.dll and an NVIDIA driver with NGX feature 18. Automatic turns it on whenever the runtime is installed (upstream default is off). " +
+            "Toggle in-game with the DLSSNR key. Undocumented feature, so results vary per game."),
         new("nr-before-sr", "DLSSNR", "Run before upscaling",
             "On: the model edits the lower-resolution input before DLSS SR / RR, which is cheaper and the upscaler cleans up its output. " +
             "Off: it runs on the upscaled image, sharper but costlier. Before RR it sees noisy ray-traced colour, so test per game."),
@@ -112,6 +123,10 @@ public static class HelpTopics
             "Don't set the HDR color space; for games or mods that set it themselves and get wrong colours when OptiScaler does too."),
 
         // ---------- NVIDIA driver ----------
+        new("nv-features", "NVIDIA", "Detected game features",
+            "The NVIDIA tab reads which DLSS runtimes the game ships: nvngx_dlss / dlssd / dlssg.dll and Streamline's sl.dlss / sl.dlss_d / sl.dlss_g / sl.reflex.dll. " +
+            "Presets for features the game doesn't have are moved under 'settings this game doesn't use', since the driver override can't add them. " +
+            "OptiScaler counts as DLSS Super Resolution once it has nvngx_dlss.dll. Games that fetch DLSS only through NVIDIA's OTA updates can't be detected from files."),
         new("nv-sr-preset", "NVIDIA", "DLSS Super Resolution preset",
             "Tells the driver which DLSS SR model preset to use for this game, whatever the game asks for (like the NVIDIA App's DLSS Override - Model Presets). " +
             "The preset and the SR override switch are written together, as the NVIDIA App stores them; Off writes both as off; Use global removes both. " +
@@ -175,7 +190,7 @@ public static class HelpTopics
         ["add-missing"] = "Leave on. It only adds a file to games that have none, and Uninstall removes it again.",
         ["ini-mode"] = "Keep game settings for everyday use: updates never undo tuning you did in-game. Apply app settings once after you changed something here and want " +
                        "it everywhere, then switch back. Fresh config when a game's ini got messy or a new OptiScaler release changed a lot.",
-        ["local-components"] = "After downloading a new nvngx_dlssnr.dll or ReShade build, import it here and press Update all.",
+        ["local-components"] = "After downloading a new nvngx_dlssnr.dll, import it here and press Update all. Leave ReShade on the automatic download unless you need a specific build.",
         ["keybinds"] = "Pick keys the game doesn't use: Delete, Insert, End, Page Up/Down and \\ are usually free. Avoid Home if you use ReShade's default overlay key.",
         ["skip-tutorial"] = "On, unless you are new to ReShade.",
         ["performance-mode"] = "Off while you set up effects, on for playing. With only add-ons (RenoDX, MFG Unlock) and no effects it makes no difference.",
@@ -189,13 +204,15 @@ public static class HelpTopics
         ["dynamic-target"] = "Refresh rate for G-Sync / VRR displays. A fixed value slightly below refresh (e.g. 138 for 144 Hz) if you cap FPS anyway.",
         ["runtime-selection"] = "Prefer local files when you use a pinned DLSS version or the Streamline swap, otherwise NVIDIA may silently replace them. Game default otherwise.",
         ["hdr-compat"] = "Native until you see HUD smearing or wrong colours with FG in HDR, then UI Composition, then Auto guard + UI, then Final color fallback.",
-        ["nr-enabled"] = "On if nvngx_dlssnr.dll is installed; toggle it in-game with the DLSSNR key to compare.",
+        ["nr-enabled"] = "Automatic; toggle it in-game with the DLSSNR key to compare.",
+        ["install-mode"] = "OptiScaler-NR for everything it supports. ReShade + add-ons for games where OptiScaler causes trouble but you still want MFG Unlock or ReShade effects.",
+        ["presets"] = "Start from the upstream defaults and load the Recommended preset if you want the tuned setup; save your own variations as presets.",
         ["nr-before-sr"] = "On (cheaper, cleaner). Turn off if a game shows smeared detail or odd colours with RR, and compare.",
         ["nr-finished"] = "Off. Try on for games whose post-processing (bloom, grading) fights the model, and accept that the HUD may change.",
         ["nr-passes"] = "1. 2 only for a deliberately stronger look with headroom to spare; 3 is mostly for experiments.",
         ["nr-scale"] = "100% at 1440p output. 75% at 4K or on RTX 40 / lower cards to keep the cost down; 50% if FPS drops too much.",
         ["nr-style"] = "Standard. Natural if the result looks over-processed, Cinematic for a graded look.",
-        ["nr-strengths"] = "Start at the app defaults (local structure 0.7, local tone 0.25, skin 0.5): detail without changing the game's lighting too much. " +
+        ["nr-strengths"] = "Start at the Recommended preset (local structure 0.7, local tone 0.25, skin 0.5): detail without changing the game's lighting too much. " +
                            "Lower local tone first if the image looks re-lit; lower skin structure if faces look aged.",
         ["nr-colour"] = "Low (0.2) keeps the game's art direction. Raise toward 1 only if you like the model's colour grading.",
         ["tm-mode"] = "SDR games: leave it, it doesn't apply. HDR games: Hybrid composed as the safe default; Neutwo composed if highlights look dull; " +
