@@ -201,7 +201,48 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     public string DlssNrInfo => Describe(_main.S.Store.DlssNrPath, _main.S.DlssNrSha, true);
-    public string ReShadeInfo => Describe(_main.S.Store.ReShadePath, _main.S.ReShadeSha, false);
+    public string ReShadeInfo
+    {
+        get
+        {
+            var store = _main.S.Store;
+            if (store.ReShadeImported) return "Imported  ·  " + Describe(store.ReShadePath, _main.S.ReShadeSha, false);
+            if (!AutoDownloadReShade) return "Not imported";
+            if (store.CurrentReShadePath is { } path) return "Downloaded from reshade.me (add-on build)  ·  " + Describe(path, _main.S.ReShadeSha, false);
+            return store.ReShade is { } r ? $"Downloaded from reshade.me on first install (add-on build {r.Tag})" : "Downloaded from reshade.me on first install";
+        }
+    }
+
+    public bool ReShadeImported => _main.S.Store.ReShadeImported;
+
+    public bool AutoDownloadReShade
+    {
+        get => Settings.AutoDownloadReShade;
+        set
+        {
+            Settings.AutoDownloadReShade = value;
+            Save();
+            _ = RefreshReShadeAsync();
+        }
+    }
+
+    /// <summary>Drops the imported ReShade64.dll so installs use the automatic download again.</summary>
+    [RelayCommand]
+    private async Task UseReShadeDownload()
+    {
+        try { File.Delete(_main.S.Store.ReShadePath); }
+        catch (IOException ex) { Log.Error("Could not remove the imported ReShade64.dll", ex); }
+        Log.Info("Removed imported ReShade64.dll; installs use the reshade.me download");
+        await RefreshReShadeAsync();
+    }
+
+    private async Task RefreshReShadeAsync()
+    {
+        await _main.RefreshLocalComponentsAsync();
+        OnPropertyChanged(nameof(ReShadeInfo));
+        OnPropertyChanged(nameof(ReShadeImported));
+        OnPropertyChanged(nameof(AutoDownloadReShade));
+    }
 
     private static string Describe(string path, string? sha, bool known)
     {
@@ -321,6 +362,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             await _main.RefreshLocalComponentsAsync();
             OnPropertyChanged(nameof(DlssNrInfo));
             OnPropertyChanged(nameof(ReShadeInfo));
+            OnPropertyChanged(nameof(ReShadeImported));
         }
         catch (IOException ex) { Log.Error($"Import of {fileName} failed", ex); }
     }

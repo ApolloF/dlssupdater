@@ -63,6 +63,26 @@ public sealed class GitHubClient
         return JsonSerializer.Deserialize(body, JsonCtx.Default.ListGhRelease) ?? [];
     }
 
+    public async Task<List<string>> GetTagsAsync(string repo, int perPage, CancellationToken ct)
+    {
+        var body = await GetApiAsync($"https://api.github.com/repos/{repo}/tags?per_page={perPage}", ct);
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.EnumerateArray()
+            .Select(t => t.TryGetProperty("name", out var n) ? n.GetString() : null)
+            .OfType<string>()
+            .ToList();
+    }
+
+    /// <summary>Plain GET of a web page (not the GitHub API), 30 s timeout.</summary>
+    public async Task<string> GetStringAsync(string url, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
+        using var res = await Http.GetAsync(url, cts.Token);
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadAsStringAsync(cts.Token);
+    }
+
     private async Task<string> GetApiAsync(string url, CancellationToken ct)
     {
         var cache = LoadCache();

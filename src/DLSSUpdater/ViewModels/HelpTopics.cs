@@ -41,8 +41,9 @@ public static class HelpTopics
             "[DlssNr] Enabled=true when the DLSSNR runtime is installed. '" + Core.ConfigProfile.RecommendedName + "' is a built-in preset with the tuned setup " +
             "(DLSS upscaler, preset override, Delete menu key, DLSSNR strengths and HDR tone mapping, ReShade tutorial skipped). Load it here or assign it to single games."),
         new("local-components", "General", "Local components",
-            "nvngx_dlssnr.dll (DLSS 5 neural rendering model, ShortFuse compat build for RTX 20–40) and ReShade64.dll (add-on build) can't be downloaded " +
-            "automatically, so they are imported once and copied into each game. Import a newer file here and Update all rolls it out."),
+            "nvngx_dlssnr.dll (DLSS 5 neural rendering model, ShortFuse compat build for RTX 20–40) can't be downloaded automatically, so it is imported once " +
+            "and copied into each game. ReShade64.dll (add-on build) is taken from the official setup on reshade.me whenever a new version is out; an imported " +
+            "ReShade64.dll replaces the download until you press Use download. Import a newer file here and Update all rolls it out."),
 
         // ---------- Keybinds ----------
         new("keybinds", "Keybinds", "Keybinds",
@@ -181,7 +182,7 @@ public static class HelpTopics
         ["add-missing"] = "Leave on. It only adds a file to games that have none, and Uninstall removes it again.",
         ["ini-mode"] = "Keep game settings for everyday use: updates never undo tuning you did in-game. Apply app settings once after you changed something here and want " +
                        "it everywhere, then switch back. Fresh config when a game's ini got messy or a new OptiScaler release changed a lot.",
-        ["local-components"] = "After downloading a new nvngx_dlssnr.dll or ReShade build, import it here and press Update all.",
+        ["local-components"] = "After downloading a new nvngx_dlssnr.dll, import it here and press Update all. Leave ReShade on the automatic download unless you need a specific build.",
         ["keybinds"] = "Pick keys the game doesn't use: Delete, Insert, End, Page Up/Down and \\ are usually free. Avoid Home if you use ReShade's default overlay key.",
         ["skip-tutorial"] = "On, unless you are new to ReShade.",
         ["performance-mode"] = "Off while you set up effects, on for playing. With only add-ons (RenoDX, MFG Unlock) and no effects it makes no difference.",

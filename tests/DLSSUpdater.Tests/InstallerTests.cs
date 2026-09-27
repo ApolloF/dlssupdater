@@ -373,4 +373,52 @@ public class InstallerTests : IDisposable
         Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
         Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));  // game ships SR elsewhere
     }
+
+    [Fact]
+    public async Task ReShade_DownloadedBuildUsed_WhenNothingImported()
+    {
+        File.Delete(Path.Combine(AppPaths.Components, ComponentStore.ReShadeFile));
+        var r = new ReleaseInfo { Tag = "6.8.0" };
+        Write(Path.Combine(ComponentStore.TagDir(Component.ReShade, r.Tag), ComponentStore.ReShadeFile), "RESHADE-AUTO");
+        ComponentStore.MarkComplete(Component.ReShade, r);
+        _store.ReShade = r;
+
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { ReShade = true }, null, default);
+        Assert.Equal("RESHADE-AUTO", T("ReShade64.dll"));
+
+        // Auto download off and nothing imported: a clear error instead of a silent skip.
+        _store.AutoReShade = () => false;
+        await Assert.ThrowsAsync<FileNotFoundException>(() => installer.InstallAsync(Game(), _target, new InstallOptions { ReShade = true }, null, default));
+    }
+
+    [Fact]
+    public void ReShade_ExtractsDllFromSetupWithPrependedExe()
+    {
+        var zip = new MemoryStream();
+        using (var a = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, body) in new[] { ("ReShade32.dll", "R32"), ("ReShade64.dll", "R64"), ("ReShade64.json", "{}") })
+            {
+                using var w = new StreamWriter(a.CreateEntry(name).Open());
+                w.Write(body);
+            }
+        }
+        var setup = Path.Combine(_tmp, "ReShade_Setup_6.8.0_Addon.exe");
+        using (var f = File.Create(setup))
+        {
+            f.Write(System.Text.Encoding.ASCII.GetBytes("MZ" + new string('\0', 4094)));
+            zip.Position = 0;
+            zip.CopyTo(f);
+        }
+        var dest = Path.Combine(_tmp, "out", "ReShade64.dll");
+        ComponentStore.ExtractReShade(setup, dest);
+        Assert.Equal("R64", File.ReadAllText(dest));
+    }
+
+    [Theory]
+    [InlineData("<a href=\"/downloads/ReShade_Setup_6.8.0.exe\">x</a><a href=\"/downloads/ReShade_Setup_6.8.0_Addon.exe\">y</a>", "6.8.0")]
+    [InlineData("downloads/ReShade_Setup_6.7.3_Addon.exe downloads/ReShade_Setup_6.10.1_Addon.exe", "6.10.1")]
+    [InlineData("<html>no links</html>", null)]
+    public void ReShade_ParsesDownloadPage(string html, string? expected) => Assert.Equal(expected, ComponentStore.ParseReShadePage(html));
 }

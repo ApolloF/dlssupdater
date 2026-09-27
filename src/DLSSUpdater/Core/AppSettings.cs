@@ -37,6 +37,8 @@ public sealed class AppSettings
     public string DefaultProxy { get; set; } = "dxgi.dll";
     public bool IncludePrereleases { get; set; } = true;
     public bool InstallReShade { get; set; } = true;
+    /// <summary>Download the ReShade add-on build from reshade.me when no ReShade64.dll was imported.</summary>
+    public bool AutoDownloadReShade { get; set; } = true;
     public bool InstallMfgUnlock { get; set; } = true;
     public bool InstallDlssNr { get; set; } = true;
     public bool AddMissingDlss { get; set; } = true;

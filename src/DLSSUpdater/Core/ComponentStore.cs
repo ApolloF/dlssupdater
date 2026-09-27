@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace DLSSUpdater.Core;
 
-public enum Component { OptiScaler, MfgUnlock, Dlss, Streamline }
+public enum Component { OptiScaler, MfgUnlock, Dlss, Streamline, ReShade }
 
 public sealed class ReleaseInfo
 {
@@ -33,6 +33,8 @@ public sealed partial class ComponentStore
     public const string MfgRepo = "mavismmg/MFGAdaUnlock-RenoDx";
     public const string DlssRepo = "NVIDIA/DLSS";
     public const string StreamlineRepo = "NVIDIA-RTX/Streamline";
+    public const string ReShadeRepo = "crosire/reshade";
+    public const string ReShadeSite = "https://reshade.me";
 
     public const string DlssNrFile = "nvngx_dlssnr.dll";
     public const string ReShadeFile = "ReShade64.dll";
@@ -54,6 +56,7 @@ public sealed partial class ComponentStore
         [Component.MfgUnlock] = new(1, 1),
         [Component.Dlss] = new(1, 1),
         [Component.Streamline] = new(1, 1),
+        [Component.ReShade] = new(1, 1),
     };
 
     public ComponentStore(GitHubClient gh, Func<bool> includePrereleases)
@@ -66,6 +69,10 @@ public sealed partial class ComponentStore
     public ReleaseInfo? Mfg { get; internal set; }
     public ReleaseInfo? Dlss { get; internal set; }
     public ReleaseInfo? Streamline { get; internal set; }
+    /// <summary>Latest ReShade with full add-on support from reshade.me.</summary>
+    public ReleaseInfo? ReShade { get; internal set; }
+    /// <summary>Download ReShade automatically when none was imported.</summary>
+    public Func<bool> AutoReShade { get; set; } = () => true;
     /// <summary>Every DLSS SDK release, newest first, for pinning an older version.</summary>
     public IReadOnlyList<ReleaseInfo> DlssReleases { get; internal set; } = [];
 
@@ -74,11 +81,26 @@ public sealed partial class ComponentStore
         Component.OptiScaler => Opti,
         Component.MfgUnlock => Mfg,
         Component.Streamline => Streamline,
+        Component.ReShade => ReShade,
         _ => Dlss,
     };
 
     public string DlssNrPath => Path.Combine(AppPaths.Components, DlssNrFile);
+    /// <summary>A ReShade64.dll the user imported; it wins over the automatic download.</summary>
     public string ReShadePath => Path.Combine(AppPaths.Components, ReShadeFile);
+    public bool ReShadeImported => File.Exists(ReShadePath);
+
+    /// <summary>The ReShade64.dll installs use right now: the imported one, else the downloaded one (null when not cached yet).</summary>
+    public string? CurrentReShadePath
+    {
+        get
+        {
+            if (ReShadeImported) return ReShadePath;
+            if (!AutoReShade() || ReShade is not { } r || !IsCached(Component.ReShade, r.Tag)) return null;
+            var path = Path.Combine(TagDir(Component.ReShade, r.Tag), ReShadeFile);
+            return File.Exists(path) ? path : null;
+        }
+    }
 
     // ---------- resolve ----------
 
@@ -88,7 +110,8 @@ public sealed partial class ComponentStore
             Resolve(Component.OptiScaler, ResolveOptiAsync, v => Opti = v, ct),
             Resolve(Component.MfgUnlock, ResolveMfgAsync, v => Mfg = v, ct),
             Resolve(Component.Dlss, ResolveDlssAsync, v => Dlss = v, ct),
-            Resolve(Component.Streamline, ResolveStreamlineAsync, v => Streamline = v, ct));
+            Resolve(Component.Streamline, ResolveStreamlineAsync, v => Streamline = v, ct),
+            Resolve(Component.ReShade, ResolveReShadeAsync, v => ReShade = v, ct));
         if (DlssReleases.Count == 0 && Dlss is not null) DlssReleases = [Dlss];
     }
 
@@ -180,6 +203,34 @@ public sealed partial class ComponentStore
             };
         }
         return null;
+    }
+
+    [GeneratedRegex(@"downloads/ReShade_Setup_(\d+(?:\.\d+)+)_Addon\.exe", RegexOptions.IgnoreCase)]
+    private static partial Regex ReShadeDownload();
+
+    internal static string ReShadeUrl(string version) => $"{ReShadeSite}/downloads/ReShade_Setup_{version}_Addon.exe";
+
+    /// <summary>Newest version linked as an add-on setup on a reshade.me page, or null.</summary>
+    internal static string? ParseReShadePage(string html) =>
+        ReShadeDownload().Matches(html).Select(m => m.Groups[1].Value)
+            .OrderByDescending(FileUtil.ParseTag).FirstOrDefault();
+
+    /// <summary>
+    /// reshade.me links the current add-on build on its front page; crosire/reshade's newest tag is the fallback
+    /// when the page layout changes. Both resolve to the official setup download.
+    /// </summary>
+    private async Task<ReleaseInfo?> ResolveReShadeAsync(CancellationToken ct)
+    {
+        string? version = null;
+        try { version = ParseReShadePage(await _gh.GetStringAsync(ReShadeSite, ct)); }
+        catch (HttpRequestException ex) { Log.Info($"reshade.me unreachable ({ex.Message}), trying GitHub tags"); }
+
+        version ??= (await _gh.GetTagsAsync(ReShadeRepo, 10, ct))
+            .Select(t => t.TrimStart('v', 'V'))
+            .Where(t => FileUtil.ParseTag(t) is not null)
+            .OrderByDescending(FileUtil.ParseTag)
+            .FirstOrDefault();
+        return version is null ? null : new ReleaseInfo { Tag = version, Files = [($"ReShade_Setup_{version}_Addon.exe", ReShadeUrl(version), null)] };
     }
 
     private static string DlssRawUrl(string refName, string file) =>
@@ -383,6 +434,65 @@ public sealed partial class ComponentStore
             return bin;
         }
         finally { _locks[Component.Streamline].Release(); }
+    }
+
+    /// <summary>The ReShade64.dll to install: the imported one, else the latest add-on build from reshade.me (downloaded once per version).</summary>
+    public async Task<string> EnsureReShadeFileAsync(IProgress<TransferProgress>? progress, CancellationToken ct)
+    {
+        if (ReShadeImported) return ReShadePath;
+        if (!AutoReShade())
+            throw new FileNotFoundException("ReShade64.dll has not been imported and automatic download is off (Settings → Local components).");
+        var r = ReShade ?? throw new InvalidOperationException("ReShade release unknown (offline and nothing cached). Import ReShade64.dll under Settings → Local components.");
+        var dir = TagDir(Component.ReShade, r.Tag);
+        var dll = Path.Combine(dir, ReShadeFile);
+        await _locks[Component.ReShade].WaitAsync(ct);
+        try
+        {
+            if (IsCached(Component.ReShade, r.Tag)) return dll;
+            if (r.FromCache) throw new InvalidOperationException("Cached ReShade is incomplete.");
+
+            var (name, url, _) = r.Files[0];
+            var setup = Path.Combine(dir, name);
+            await _gh.DownloadAsync(url, setup, $"ReShade {r.Tag}", progress, ct);
+            progress?.Report(new TransferProgress("Extracting ReShade", null));
+            await Task.Run(() => ExtractReShade(setup, dll), ct);
+            File.Delete(setup);
+
+            MarkComplete(Component.ReShade, r);
+            Log.Info($"Cached ReShade {r.Tag} (add-on build)");
+            return dll;
+        }
+        finally { _locks[Component.ReShade].Release(); }
+    }
+
+    /// <summary>ReShade's setup is an exe with a zip appended; ReShade64.dll is one of its entries.</summary>
+    internal static void ExtractReShade(string setupExe, string destDll)
+    {
+        var bytes = File.ReadAllBytes(setupExe);
+        var start = AppendedZipStart(bytes);
+        using var archive = new ZipArchive(new MemoryStream(bytes, start, bytes.Length - start, writable: false), ZipArchiveMode.Read);
+        var entry = archive.Entries.FirstOrDefault(e => e.FullName.Equals(ReShadeFile, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidDataException("ReShade64.dll missing from the ReShade setup.");
+        Directory.CreateDirectory(Path.GetDirectoryName(destDll)!);
+        entry.ExtractToFile(destDll, true);
+    }
+
+    /// <summary>
+    /// Where a zip appended to other data begins. The archive's offsets are relative to its own start, which
+    /// ZipArchive can't handle with the exe in front: the real central directory sits right before the
+    /// end-of-central-directory record, so start = that position minus the offset the record claims.
+    /// </summary>
+    internal static int AppendedZipStart(byte[] data)
+    {
+        for (var i = data.Length - 22; i >= Math.Max(0, data.Length - 22 - 65535); i--)
+        {
+            if (data[i] != 0x50 || data[i + 1] != 0x4B || data[i + 2] != 0x05 || data[i + 3] != 0x06) continue;
+            var cdSize = BitConverter.ToUInt32(data, i + 12);
+            var cdOffset = BitConverter.ToUInt32(data, i + 16);
+            var start = (long)i - cdSize - cdOffset;
+            if (start >= 0) return (int)start;
+        }
+        throw new InvalidDataException("No zip archive found in the ReShade setup.");
     }
 
     private static async Task VerifyAsync(string file, string? sha256, CancellationToken ct)

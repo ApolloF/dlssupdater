@@ -76,8 +76,7 @@ public sealed class Installer(ComponentStore store)
         if (o.Streamline && game.Streamline.Count == 0) Log.Info($"{game.Name}: no Streamline files in this game, skipped");
         if (o.DlssNr && !File.Exists(store.DlssNrPath))
             throw new FileNotFoundException("nvngx_dlssnr.dll has not been imported (Settings → Components).");
-        if (o.ReShade && !File.Exists(store.ReShadePath))
-            throw new FileNotFoundException("ReShade64.dll has not been imported (Settings → Components).");
+        var reshade = o.ReShade ? await store.EnsureReShadeFileAsync(progress, ct) : null;
 
         progress?.Report(new TransferProgress($"Installing to {game.Name}", null));
         var m = InstallManifest.Load(targetDir) ?? new InstallManifest();
@@ -95,12 +94,12 @@ public sealed class Installer(ComponentStore store)
                     m.OptiTag = store.Opti?.Tag;
                     m.Proxy = o.Proxy;
                 }
-                if (o.ReShade)
+                if (reshade is not null)
                 {
                     WriteReShadeIni(ctx, o);
-                    Place(ctx, store.ReShadePath, Path.Combine(targetDir, ComponentStore.ReShadeFile));
+                    Place(ctx, reshade, Path.Combine(targetDir, ComponentStore.ReShadeFile));
                     m.ReShade = true;
-                    m.ReShadeSha = HashCache.Get(store.ReShadePath);
+                    m.ReShadeSha = HashCache.Get(reshade);
                 }
                 if (mfg is not null)
                 {

@@ -269,8 +269,7 @@ public sealed partial class GameViewModel : ObservableObject
         var store = _s.Store;
 
         Row("opti", m?.Opti == true ? m.OptiTag : null, store.Opti?.Tag, true);
-        Row("reshade", m?.ReShade == true ? InstalledVersion(ComponentStore.ReShadeFile) : null, File.Exists(store.ReShadePath) ? ReShadeVersion() : null,
-            m?.ReShade != true || m.ReShadeSha == _s.ReShadeSha);
+        Row("reshade", m?.ReShade == true ? InstalledVersion(ComponentStore.ReShadeFile) : null, ReShadeLatest(), ReShadeCurrent(m));
         Row("mfg", m?.Mfg == true ? m.MfgTag : null, store.Mfg?.Tag, true);
         Row("dlssnr", m?.DlssNr == true ? InstalledVersion(ComponentStore.DlssNrFile) : null, File.Exists(store.DlssNrPath) ? DlssNrLabel() : null,
             m?.DlssNr != true || m.DlssNrSha == _s.DlssNrSha);
@@ -335,7 +334,24 @@ public sealed partial class GameViewModel : ObservableObject
             : installed == latest ? RowState.Current : RowState.Update;
     }
 
-    private string ReShadeVersion() => FileUtil.Format(FileUtil.ReadVersion(_s.Store.ReShadePath));
+    /// <summary>Version installs would use: the imported dll, the downloaded one, or the reshade.me release not downloaded yet.</summary>
+    private string? ReShadeLatest()
+    {
+        var store = _s.Store;
+        if (store.CurrentReShadePath is { } path) return FileUtil.Format(Trim3(FileUtil.ReadVersion(path)));
+        return _s.Settings.AutoDownloadReShade && store.ReShade is { } r ? r.Tag : null;
+    }
+
+    private bool ReShadeCurrent(InstallManifest? m)
+    {
+        if (m?.ReShade != true) return true;
+        if (_s.Store.ReShadeImported || _s.Store.CurrentReShadePath is not null) return m.ReShadeSha == _s.ReShadeSha;
+        // Auto download not fetched yet: compare the installed file with the release version.
+        var installed = SelectedTarget is null ? null : FileUtil.ReadVersion(Path.Combine(SelectedTarget.Dir, ComponentStore.ReShadeFile));
+        return installed is null || _s.Store.ReShade?.Version is not { } latest || Trim(installed) >= Trim(latest);
+    }
+
+    private static Version? Trim3(Version? v) => v is null ? null : Trim(v);
 
     private string DlssNrLabel()
     {

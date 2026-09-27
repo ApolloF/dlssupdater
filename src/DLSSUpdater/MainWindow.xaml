@@ -643,11 +643,19 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Text="ReShade64.dll" Style="{StaticResource Mono}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="1" Text="{Binding ReShadeInfo}" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
-                                            <Button Grid.Column="2" Content="Import…" Command="{Binding ImportReShadeCommand}" Margin="12,0,0,0" />
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                <Button Content="Use download" Style="{StaticResource BtnGhost}" Command="{Binding UseReShadeDownloadCommand}" Margin="12,0,0,0"
+                                                        Visibility="{Binding ReShadeImported, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="Remove the imported ReShade64.dll and use the latest add-on build from reshade.me" />
+                                                <Button Content="Import…" Command="{Binding ImportReShadeCommand}" Margin="12,0,0,0" />
+                                            </StackPanel>
                                         </Grid>
+                                        <Border Style="{StaticResource Divider}" />
+                                        <CheckBox IsChecked="{Binding AutoDownloadReShade}" Margin="0,10"
+                                                  Content="Download ReShade (add-on build) from reshade.me when none is imported" />
                                     </StackPanel>
                                 </Border>
-                                <TextBlock Text="These aren't redistributable, so they're imported once and kept in the app's data folder. Use the ReShade build with full add-on support."
+                                <TextBlock Text="nvngx_dlssnr.dll isn't redistributable, so it's imported once and kept in the app's data folder. ReShade is fetched from reshade.me automatically; import your own build (with full add-on support) to use that instead."
                                            Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" />
 
                                 <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />

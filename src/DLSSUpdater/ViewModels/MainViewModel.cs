@@ -24,7 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
         Log.TrimFile();
         var settings = AppSettings.Load();
         var gh = new GitHubClient { Token = settings.GitHubToken };
-        var store = new ComponentStore(gh, () => settings.IncludePrereleases);
+        var store = new ComponentStore(gh, () => settings.IncludePrereleases) { AutoReShade = () => settings.AutoDownloadReShade };
         S = new Services { Settings = settings, Store = store, Installer = new Installer(store) };
         Gh = gh;
         SettingsVm = new SettingsViewModel(this);
@@ -163,9 +163,10 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task RefreshLocalComponentsAsync()
     {
         var store = S.Store;
+        var rsPath = store.CurrentReShadePath;
         var (nr, rs) = await Task.Run(() => (
             File.Exists(store.DlssNrPath) ? HashCache.Get(store.DlssNrPath) : null,
-            File.Exists(store.ReShadePath) ? HashCache.Get(store.ReShadePath) : null));
+            rsPath is not null ? HashCache.Get(rsPath) : null));
         S.DlssNrSha = nr;
         S.ReShadeSha = rs;
 
@@ -173,8 +174,11 @@ public sealed partial class MainViewModel : ObservableObject
         DlssNrText = nr is null ? "missing"
             : FileUtil.Format(FileUtil.ReadVersion(store.DlssNrPath)) +
               (ComponentStore.KnownDlssNr.TryGetValue(nr, out var variant) ? $" · {variant.Split(" · ")[0]}" : " · unverified");
-        ReShadeOk = rs is not null;
-        ReShadeText = rs is null ? "missing" : FileUtil.Format(FileUtil.ReadVersion(store.ReShadePath));
+        var auto = S.Settings.AutoDownloadReShade && !store.ReShadeImported;
+        ReShadeOk = rs is not null || (auto && store.ReShade is not null);
+        ReShadeText = rsPath is not null ? FileUtil.Format(FileUtil.ReadVersion(rsPath)) + (auto ? " · auto" : "")
+            : auto && store.ReShade is { } r ? $"{r.Tag} · auto"
+            : auto ? "auto" : "missing";
         foreach (var g in Games) g.RefreshStatus();
         CountUpdates();
     }
@@ -202,6 +206,7 @@ public sealed partial class MainViewModel : ObservableObject
             g.RefreshStatus();
         }
         CountUpdates();
+        await RefreshLocalComponentsAsync();
         await CheckCompatAsync();
         Log.Info($"Latest: OptiScaler-NR {OptiVersion} · DLSS {DlssVersion} · MFG Unlock {MfgVersion}{(Online ? "" : " (offline)")}");
     }
@@ -520,6 +525,8 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             await work();
+            // An install may have downloaded ReShade for the first time.
+            if (S.Store.ReShade is not null && !S.Store.ReShadeImported) await RefreshLocalComponentsAsync();
             Status = "Ready";
         }
         catch (OperationCanceledException)
