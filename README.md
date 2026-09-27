@@ -12,6 +12,15 @@ It pulls the latest releases of:
 
 and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll`.
 
+## Download
+
+Each [release](https://github.com/ApolloF/dlssupdater/releases/latest) has two builds of the same app:
+
+- **`DLSSUpdater-Setup-<version>.exe`**: installer. Installs for your user without admin rights (or for all users), adds a Start menu entry and an optional desktop icon, and has an uninstaller. Run a newer setup to update.
+- **`DLSSUpdater.exe`**: portable. A single self-contained exe; put it anywhere and run it.
+
+Both keep settings and downloads in `%LocalAppData%\DLSSUpdater`, so you can switch between them. Uninstalling keeps that folder and removes the Seaglass add-on link if it pointed at the installed copy.
+
 ## What an install does
 
 1. Finds the real game exe (Unreal `*-Win64-Shipping.exe`, Unity players, etc.; you can pick another folder).
@@ -67,6 +76,12 @@ dotnet test
 dotnet publish src/DLSSUpdater -c Release -o publish
 ```
 
-Produces a single self-contained `publish\DLSSUpdater.exe` (.NET 8, WPF). Tagging `v*` builds it on GitHub Actions and attaches it to a release.
+Produces a single self-contained `publish\DLSSUpdater.exe` (.NET 8, WPF), the portable build. The installer wraps it with [Inno Setup](https://jrsoftware.org/isinfo.php):
+
+```
+iscc /DAppVersion=1.5.0 installer\DLSSUpdater.iss
+```
+
+Tagging `v*` (matching `<Version>` in the csproj) builds both on GitHub Actions and attaches them to a release.
 
 `DLSSU_INTEGRATION=1` enables a test that downloads the real releases (including ReShade from reshade.me) and installs them into a temporary folder.

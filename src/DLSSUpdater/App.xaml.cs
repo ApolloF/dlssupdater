@@ -23,6 +23,15 @@ public partial class App : Application
             base.OnStartup(e);
             return;
         }
+        if (e.Args.Contains("--unregister-addon"))
+        {
+            // Run by the uninstaller: only removes the Seaglass link when it points at this exe.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try { Addon.AddonRegistration.UnregisterIfThisExe(); }
+            catch (Exception ex) { Log.Error("Disconnect from Seaglass", ex); }
+            Shutdown();
+            return;
+        }
         if (e.Args.Contains("--register-addon"))
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

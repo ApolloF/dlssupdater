@@ -53,6 +53,15 @@ public static class AddonRegistration
         Log.Info($"Connected to Seaglass ({ManifestPath})");
     }
 
+    /// <summary>Unregisters only when addon.json launches this exe, so uninstalling one copy never disconnects another.</summary>
+    public static void UnregisterIfThisExe()
+    {
+        if (!Registered || Environment.ProcessPath is not { } exe) return;
+        var registered = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(ManifestPath))?["exe"]?.GetValue<string>();
+        if (registered is not null && string.Equals(Path.GetFullPath(registered), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase))
+            Unregister();
+    }
+
     public static void Unregister()
     {
         var dir = Path.GetDirectoryName(ManifestPath)!;
