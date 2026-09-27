@@ -15,6 +15,10 @@ public static class HelpTopics
     public static readonly HelpTopic[] All =
     [
         // ---------- General ----------
+        new("install-mode", "General", "Install mode",
+            "OptiScaler-NR (default) is the main use: OptiScaler is the proxy, loads ReShade and its add-ons, and runs DLSSNR. " +
+            "ReShade + add-ons installs ReShade itself as the proxy (dxgi.dll by default) with MFG Unlock, the DLSS and Streamline updates, and no OptiScaler or DLSSNR. " +
+            "Switching a game between the two removes the other mode's files and puts back what they replaced. Each game can use its own mode."),
         new("proxy", "General", "Proxy DLL name",
             "The file name OptiScaler is saved as so the game loads it. dxgi.dll works for most DX12 games. " +
             "Pick another (winmm.dll, version.dll, dbghelp.dll) when the game or another mod already needs dxgi.dll, " +
@@ -197,6 +201,7 @@ public static class HelpTopics
         ["runtime-selection"] = "Prefer local files when you use a pinned DLSS version or the Streamline swap, otherwise NVIDIA may silently replace them. Game default otherwise.",
         ["hdr-compat"] = "Native until you see HUD smearing or wrong colours with FG in HDR, then UI Composition, then Auto guard + UI, then Final color fallback.",
         ["nr-enabled"] = "Automatic; toggle it in-game with the DLSSNR key to compare.",
+        ["install-mode"] = "OptiScaler-NR for everything it supports. ReShade + add-ons for games where OptiScaler causes trouble but you still want MFG Unlock or ReShade effects.",
         ["presets"] = "Start from the upstream defaults and load the Recommended preset if you want the tuned setup; save your own variations as presets.",
         ["nr-before-sr"] = "On (cheaper, cleaner). Turn off if a game shows smeared detail or odd colours with RR, and compare.",
         ["nr-finished"] = "Off. Try on for games whose post-processing (bloom, grading) fights the model, and accept that the HUD may change.",

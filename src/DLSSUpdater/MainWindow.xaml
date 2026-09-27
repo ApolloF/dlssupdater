@@ -345,6 +345,10 @@
                                                 Visibility="{Binding IsOptiInstalled, Converter={StaticResource BoolToVis}}">
                                             <TextBlock Text="OPTI" Style="{StaticResource BadgeText}" Foreground="#0B0B0B" />
                                         </Border>
+                                        <Border Style="{StaticResource Badge}" BorderBrush="{StaticResource Accent}"
+                                                Visibility="{Binding IsReShadeOnlyInstalled, Converter={StaticResource BoolToVis}}" ToolTip="ReShade + add-ons, no OptiScaler">
+                                            <TextBlock Text="RESHADE" Style="{StaticResource BadgeText}" />
+                                        </Border>
                                         <Border Style="{StaticResource Badge}" BorderBrush="{StaticResource Danger}"
                                                 Visibility="{Binding HasAntiCheat, Converter={StaticResource BoolToVis}}" ToolTip="{Binding AntiCheat}">
                                             <TextBlock Text="AC" Style="{StaticResource BadgeText}" Foreground="{StaticResource Danger}" />
@@ -451,12 +455,18 @@
                         <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}" />
                         <Button Grid.Column="1" Style="{StaticResource BtnIcon}" Content="&#xE8DA;" Margin="6,0,12,0" ToolTip="Choose folder"
                                 Command="{Binding DataContext.BrowseTargetCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                        <ComboBox Grid.Column="2" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding Proxy}" ToolTip="OptiScaler proxy DLL name" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding ProxyNames}" SelectedItem="{Binding Proxy}" ToolTip="Proxy DLL name the game loads" />
                     </Grid>
-                    <TextBlock Text="Files go next to the game executable. Proxy is the name OptiScaler is loaded as."
-                               Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding ProxyHint}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,8,0,0" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                        <TextBlock Text="CONFIG PRESET" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Text="MODE" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,12,0" Width="96" />
+                        <ComboBox Width="240" ItemsSource="{Binding Modes}" SelectedItem="{Binding ModeChoice}"
+                                  ItemContainerStyle="{StaticResource DescribedItem}" ToolTip="OptiScaler-NR, or ReShade with add-ons without OptiScaler" />
+                        <Button Style="{StaticResource InfoBtn}" CommandParameter="install-mode" VerticalAlignment="Center"
+                                ToolTip="{Binding Source=install-mode, Converter={StaticResource HelpTip}}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <TextBlock Text="CONFIG PRESET" Style="{StaticResource Caps}" VerticalAlignment="Center" Margin="0,0,12,0" Width="96" />
                         <ComboBox Width="240" ItemsSource="{Binding PresetChoices}" SelectedItem="{Binding PresetChoice}"
                                   ToolTip="OptiScaler / ReShade settings used for this game (save presets in Settings)" />
                     </StackPanel>
@@ -481,7 +491,7 @@
                             <ItemsControl ItemsSource="{Binding Components}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:ComponentRow}">
-                                        <Grid Margin="16,9">
+                                        <Grid Margin="16,9" Visibility="{Binding Visible, Converter={StaticResource BoolToVis}}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="18" />
                                                 <ColumnDefinition Width="*" />
@@ -493,7 +503,7 @@
                                             <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="2" Text="{Binding Installed}" Style="{StaticResource Mono}" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="3" Text="{Binding Latest}" Style="{StaticResource Mono}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <CheckBox Grid.Column="4" IsChecked="{Binding Enabled}" HorizontalAlignment="Right" ToolTip="Include in install" />
+                                            <CheckBox Grid.Column="4" IsChecked="{Binding Enabled}" IsEnabled="{Binding Editable}" HorizontalAlignment="Right" ToolTip="Include in install" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -661,6 +671,15 @@
                                 <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />
                                 <Border Style="{StaticResource Card}" Padding="16,6">
                                     <StackPanel>
+                                        <Grid Margin="0,8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Install mode" VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource InfoBtn}" CommandParameter="install-mode"
+                                                    ToolTip="{Binding Source=install-mode, Converter={StaticResource HelpTip}}" />
+                                            </StackPanel>
+                                            <ComboBox Width="170" HorizontalAlignment="Right" ItemsSource="{Binding Modes}" SelectedItem="{Binding DefaultMode}"
+                                                      ItemContainerStyle="{StaticResource DescribedItem}" />
+                                        </Grid>
                                         <Grid Margin="0,8">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Proxy DLL name" VerticalAlignment="Center" />

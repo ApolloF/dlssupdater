@@ -12,6 +12,8 @@ public sealed class GameOverride
     public string? DlssTag { get; set; }
     /// <summary>Config preset used for this game; null uses the current settings.</summary>
     public string? Preset { get; set; }
+    /// <summary>OptiScaler or ReShade-only for this game; null follows the default.</summary>
+    public InstallMode? Mode { get; set; }
 }
 
 /// <summary>A named snapshot of the OptiScaler.ini and ReShade.ini settings (incl. keybinds and options).</summary>
@@ -34,7 +36,13 @@ public sealed class AppSettings
     public List<string> HiddenGames { get; set; } = [];
     public Dictionary<string, GameOverride> Games { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Names ReShade loads under when it is the proxy itself (ReShade-only mode).</summary>
+    public static readonly string[] ReShadeProxyNames =
+        ["dxgi.dll", "d3d12.dll", "d3d11.dll", "d3d9.dll", "dinput8.dll", "opengl32.dll"];
+
     public string DefaultProxy { get; set; } = "dxgi.dll";
+    /// <summary>What a new install puts in: OptiScaler-NR (the main purpose) or ReShade with add-ons only.</summary>
+    public InstallMode DefaultMode { get; set; } = InstallMode.OptiScaler;
     public bool IncludePrereleases { get; set; } = true;
     public bool InstallReShade { get; set; } = true;
     /// <summary>Download the ReShade add-on build from reshade.me when no ReShade64.dll was imported.</summary>

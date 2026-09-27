@@ -421,4 +421,77 @@ public class InstallerTests : IDisposable
     [InlineData("downloads/ReShade_Setup_6.7.3_Addon.exe downloads/ReShade_Setup_6.10.1_Addon.exe", "6.10.1")]
     [InlineData("<html>no links</html>", null)]
     public void ReShade_ParsesDownloadPage(string html, string? expected) => Assert.Equal(expected, ComponentStore.ParseReShadePage(html));
+
+    private static InstallOptions ReShadeOnly(string proxy = "dxgi.dll") => new()
+    {
+        Mode = InstallMode.ReShadeOnly, ReShade = true, Mfg = true, Proxy = proxy,
+        ReShadeOverrides = [new("OVERLAY", "TutorialProgress", "4")],
+    };
+
+    [Fact]
+    public async Task ReShadeOnly_InstallsReShadeAsProxy_WithoutOptiScaler()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default);
+
+        Assert.Equal("RESHADE", T("dxgi.dll"));                     // other mod's dxgi.dll went to the backup
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("4", IniFile.Load(Path.Combine(_target, "ReShade.ini")).Get("OVERLAY", "TutorialProgress"));
+        Assert.False(File.Exists(Path.Combine(_target, "ReShade64.dll")));
+        Assert.False(Directory.Exists(Path.Combine(_target, "OptiScaler")));
+        Assert.Equal("[Hotfix]\nManualInputPolling=true\n", T("OptiScaler.ini")); // untouched
+        var m = InstallManifest.Load(_target)!;
+        Assert.Equal(InstallMode.ReShadeOnly, m.Mode);
+        Assert.False(m.Opti);
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task SwitchingModes_LeavesNoStrayFiles()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        var opti = new InstallOptions
+        {
+            Opti = true, ReShade = true, Mfg = true, DlssNr = true, Proxy = "winmm.dll", Overrides = ConfigProfile.Defaults(),
+        };
+
+        await installer.InstallAsync(Game(), _target, opti, null, default);
+        Assert.Equal("OPTI-1", T("winmm.dll"));
+        Assert.Equal("RESHADE", T("ReShade64.dll"));
+
+        // OptiScaler -> ReShade-only on dxgi.dll: OptiScaler, its ini and DLSSNR go, the hand-made ini comes back.
+        await installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default);
+        Assert.False(File.Exists(Path.Combine(_target, "winmm.dll")));
+        Assert.False(File.Exists(Path.Combine(_target, "ReShade64.dll")));
+        Assert.False(File.Exists(Path.Combine(_target, ComponentStore.DlssNrFile)));
+        Assert.False(Directory.Exists(Path.Combine(_target, "OptiScaler")));
+        Assert.False(Directory.Exists(Path.Combine(_target, "Licenses")));
+        Assert.Equal("[Hotfix]\nManualInputPolling=true\n", T("OptiScaler.ini"));
+        Assert.Equal("RESHADE", T("dxgi.dll"));
+        var m = InstallManifest.Load(_target)!;
+        Assert.False(m.Opti);
+        Assert.False(m.DlssNr);
+        Assert.Empty(m.OptiIni);
+
+        // Back to OptiScaler on winmm.dll: the ReShade proxy on dxgi.dll is removed and the other mod's dxgi.dll restored.
+        await installer.InstallAsync(Game(), _target, opti, null, default);
+        Assert.Equal("OTHER-MOD", T("dxgi.dll"));
+        Assert.Equal("OPTI-1", T("winmm.dll"));
+        Assert.Equal("RESHADE", T("ReShade64.dll"));
+        Assert.Equal(InstallMode.OptiScaler, InstallManifest.Load(_target)!.Mode);
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task ReShadeOnly_WithoutReShade_Throws()
+    {
+        var o = new InstallOptions { Mode = InstallMode.ReShadeOnly, Mfg = true };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new Installer(_store).InstallAsync(Game(), _target, o, null, default));
+    }
 }

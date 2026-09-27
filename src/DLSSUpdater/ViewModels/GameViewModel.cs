@@ -12,6 +12,10 @@ public sealed partial class ComponentRow(string key, string name) : ObservableOb
     public string Key { get; } = key;
     public string Name { get; } = name;
     [ObservableProperty] private bool _enabled = true;
+    /// <summary>Hidden when it doesn't apply to the install mode (OptiScaler / DLSSNR in ReShade-only).</summary>
+    [ObservableProperty] private bool _visible = true;
+    /// <summary>False when the mode requires this component (ReShade in ReShade-only).</summary>
+    [ObservableProperty] private bool _editable = true;
     [ObservableProperty] private string _installed = "—";
     [ObservableProperty] private string _latest = "—";
     [ObservableProperty] private RowState _state;
@@ -22,6 +26,17 @@ public sealed record DlssRow(string RelPath, string Kind, string Current, string
 /// <summary>A DLSS version choice; Tag null = follow the default.</summary>
 public sealed record DlssChoice(string? Tag, string Label)
 {
+    public override string ToString() => Label;
+}
+
+public sealed record ModeChoice(InstallMode Mode, string Label, string Description)
+{
+    public static readonly ModeChoice[] All =
+    [
+        new(InstallMode.OptiScaler, "OptiScaler-NR", "OptiScaler-NR as the proxy; it loads ReShade, add-ons and DLSSNR."),
+        new(InstallMode.ReShadeOnly, "ReShade + add-ons", "ReShade as the proxy with MFG Unlock and DLSS updates, without OptiScaler."),
+    ];
+
     public override string ToString() => Label;
 }
 
@@ -75,7 +90,48 @@ public sealed partial class GameViewModel : ObservableObject
     public ObservableCollection<TargetOption> Targets { get; } = [];
     public ObservableCollection<ComponentRow> Components { get; }
     public ObservableCollection<DlssRow> DlssRows { get; } = [];
-    public IReadOnlyList<string> ProxyNames => AppSettings.ProxyNames;
+    public IReadOnlyList<string> ProxyNames => IsReShadeOnly ? AppSettings.ReShadeProxyNames : AppSettings.ProxyNames;
+    public IReadOnlyList<ModeChoice> Modes => ModeChoice.All;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReShadeOnly), nameof(ProxyNames), nameof(ModeChoice), nameof(ProxyHint))]
+    private InstallMode _mode;
+
+    public bool IsReShadeOnly => Mode == InstallMode.ReShadeOnly;
+    public string ProxyHint => IsReShadeOnly
+        ? "Files go next to the game executable. Proxy is the name ReShade is loaded as (dxgi.dll for DX10–12, d3d9.dll, opengl32.dll …)."
+        : "Files go next to the game executable. Proxy is the name OptiScaler is loaded as.";
+
+    public ModeChoice ModeChoice
+    {
+        get => ModeChoice.All.First(m => m.Mode == Mode);
+        set
+        {
+            if (value is null) return;
+            Mode = value.Mode;
+        }
+    }
+
+    partial void OnModeChanged(InstallMode value)
+    {
+        ApplyModeToRows();
+        if (!ProxyNames.Contains(Proxy, StringComparer.OrdinalIgnoreCase)) Proxy = "dxgi.dll";
+        if (_loading) return;
+        _s.Settings.For(Id).Mode = value == _s.Settings.DefaultMode ? null : value;
+        _s.Settings.Save();
+        RefreshStatus();
+    }
+
+    private void ApplyModeToRows()
+    {
+        foreach (var c in Components)
+        {
+            c.Visible = !(IsReShadeOnly && c.Key is "opti" or "dlssnr");
+            c.Editable = !(IsReShadeOnly && c.Key == "reshade");
+            if (!c.Editable) c.Enabled = true;
+        }
+        OnPropertyChanged(nameof(AnyEnabled));
+    }
 
     [ObservableProperty] private TargetOption? _selectedTarget;
     [ObservableProperty] private string _proxy = "dxgi.dll";
@@ -130,6 +186,7 @@ public sealed partial class GameViewModel : ObservableObject
     public string? AntiCheat => Info.AntiCheat;
     public bool IsInstalled => Manifest is not null || Info.Installs.Count > 0;
     public bool IsOptiInstalled => Manifest?.Opti == true;
+    public bool IsReShadeOnlyInstalled => Manifest is { Mode: InstallMode.ReShadeOnly, ReShade: true };
     public bool AnyEnabled => Components.Any(c => c.Enabled);
 
     public string DlssBadge
@@ -243,6 +300,8 @@ public sealed partial class GameViewModel : ObservableObject
     {
         _loading = true;
         Manifest = SelectedTarget is null ? null : InstallManifest.Load(SelectedTarget.Dir);
+        var over = _s.Settings.Games.GetValueOrDefault(Id);
+        Mode = Manifest is { } im && (im.Opti || im.ReShade) ? im.Mode : over?.Mode ?? _s.Settings.DefaultMode;
         Proxy = Manifest?.Proxy ?? _s.Settings.Games.GetValueOrDefault(Id)?.Proxy ?? ExistingOptiProxy() ?? _s.Settings.DefaultProxy;
 
         var m = Manifest;
@@ -252,6 +311,8 @@ public sealed partial class GameViewModel : ObservableObject
         Set("dlssnr", m?.DlssNr ?? _s.Settings.InstallDlssNr);
         Set("dlss", m?.Dlss ?? HasDlss); // nothing to replace in games that don't ship DLSS
         Set("streamline", m?.Streamline ?? (_s.Settings.InstallStreamline && HasStreamline));
+        ApplyModeToRows();
+        if (!ProxyNames.Contains(Proxy, StringComparer.OrdinalIgnoreCase)) Proxy = "dxgi.dll";
         _loading = false;
         RefreshStatus();
 
@@ -269,7 +330,7 @@ public sealed partial class GameViewModel : ObservableObject
         var store = _s.Store;
 
         Row("opti", m?.Opti == true ? m.OptiTag : null, store.Opti?.Tag, true);
-        Row("reshade", m?.ReShade == true ? InstalledVersion(ComponentStore.ReShadeFile) : null, ReShadeLatest(), ReShadeCurrent(m));
+        Row("reshade", m?.ReShade == true ? InstalledVersion(ReShadeInstalledName(m)) : null, ReShadeLatest(), ReShadeCurrent(m));
         Row("mfg", m?.Mfg == true ? m.MfgTag : null, store.Mfg?.Tag, true);
         Row("dlssnr", m?.DlssNr == true ? InstalledVersion(ComponentStore.DlssNrFile) : null, File.Exists(store.DlssNrPath) ? DlssNrLabel() : null,
             m?.DlssNr != true || m.DlssNrSha == _s.DlssNrSha);
@@ -310,6 +371,7 @@ public sealed partial class GameViewModel : ObservableObject
         OnPropertyChanged(nameof(ActionText));
         OnPropertyChanged(nameof(IsInstalled));
         OnPropertyChanged(nameof(IsOptiInstalled));
+        OnPropertyChanged(nameof(IsReShadeOnlyInstalled));
         OnPropertyChanged(nameof(DlssCurrent));
     }
 
@@ -347,11 +409,15 @@ public sealed partial class GameViewModel : ObservableObject
         if (m?.ReShade != true) return true;
         if (_s.Store.ReShadeImported || _s.Store.CurrentReShadePath is not null) return m.ReShadeSha == _s.ReShadeSha;
         // Auto download not fetched yet: compare the installed file with the release version.
-        var installed = SelectedTarget is null ? null : FileUtil.ReadVersion(Path.Combine(SelectedTarget.Dir, ComponentStore.ReShadeFile));
+        var installed = SelectedTarget is null ? null : FileUtil.ReadVersion(Path.Combine(SelectedTarget.Dir, ReShadeInstalledName(m)));
         return installed is null || _s.Store.ReShade?.Version is not { } latest || Trim(installed) >= Trim(latest);
     }
 
     private static Version? Trim3(Version? v) => v is null ? null : Trim(v);
+
+    /// <summary>ReShade64.dll beside OptiScaler, or the proxy name when ReShade is the proxy.</summary>
+    private static string ReShadeInstalledName(InstallManifest m) =>
+        m.Mode == InstallMode.ReShadeOnly && m.Proxy is { } p ? p : ComponentStore.ReShadeFile;
 
     private string DlssNrLabel()
     {
@@ -364,12 +430,13 @@ public sealed partial class GameViewModel : ObservableObject
 
     public InstallOptions BuildOptions(bool dlssOnly, bool acConfirmed) => new()
     {
-        Opti = !dlssOnly && On("opti"),
-        ReShade = !dlssOnly && On("reshade"),
+        Mode = Mode,
+        Opti = !dlssOnly && !IsReShadeOnly && On("opti"),
+        ReShade = !dlssOnly && (IsReShadeOnly || On("reshade")),
         Mfg = !dlssOnly && On("mfg"),
-        DlssNr = !dlssOnly && On("dlssnr"),
+        DlssNr = !dlssOnly && !IsReShadeOnly && On("dlssnr"),
         Dlss = dlssOnly || On("dlss"),
-        AddMissingDlss = _s.Settings.AddMissingDlss && !dlssOnly && On("opti"),
+        AddMissingDlss = _s.Settings.AddMissingDlss && !dlssOnly && !IsReShadeOnly && On("opti"),
         DlssTag = EffectiveDlssTag,
         Streamline = On("streamline") && HasStreamline,
         ReShadeOverrides = ReShadeProfile,
@@ -383,6 +450,7 @@ public sealed partial class GameViewModel : ObservableObject
     /// <summary>Options that reproduce what is installed, for "Update all".</summary>
     public InstallOptions UpdateOptions(InstallManifest m) => new()
     {
+        Mode = m.Mode,
         Opti = m.Opti,
         ReShade = m.ReShade,
         Mfg = m.Mfg,

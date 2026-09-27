@@ -141,6 +141,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ---------- general ----------
 
+    public IReadOnlyList<ModeChoice> Modes => ModeChoice.All;
+
+    public ModeChoice DefaultMode
+    {
+        get => ModeChoice.All.First(m => m.Mode == Settings.DefaultMode);
+        set
+        {
+            if (value is null) return;
+            Settings.DefaultMode = value.Mode;
+            Save();
+        }
+    }
+
     public string DefaultProxy
     {
         get => Settings.DefaultProxy;
