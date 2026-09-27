@@ -8,16 +8,17 @@ It pulls the latest releases of:
 - [MFGAdaUnlock-RenoDx](https://github.com/mavismmg/MFGAdaUnlock-RenoDx/releases) (`renodx-mfgunlock.addon64`)
 - [NVIDIA DLSS](https://github.com/NVIDIA/DLSS) runtime DLLs: `nvngx_dlss.dll` (SR), `nvngx_dlssd.dll` (RR), `nvngx_dlssg.dll` (FG)
 - [NVIDIA Streamline](https://github.com/NVIDIA-RTX/Streamline) (optional, signed `sl.*.dll` set for Dynamic MFG)
+- [ReShade](https://reshade.me) with full add-on support (`ReShade64.dll` taken from the official setup)
 
-and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll` and `ReShade64.dll`.
+and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll`.
 
 ## What an install does
 
 1. Finds the real game exe (Unreal `*-Win64-Shipping.exe`, Unity players, etc.; you can pick another folder).
 2. Copies `OptiScaler.dll` as the chosen proxy (`dxgi.dll` by default) plus its `OptiScaler\` backend folder.
-3. Builds `OptiScaler.ini` from the release ini plus your overrides (default: ReShade loading on, overlay on **Del**, DLSS preset override, DLSSNR settings) and patches `ReShade.ini` (keybinds, tutorial, MFG Unlock options).
+3. Builds `OptiScaler.ini` from the release ini plus your settings and patches `ReShade.ini` (keybinds, MFG Unlock options). Out of the box nothing is changed from what the upstream projects ship, except `LoadReshade=true` when ReShade is installed and `[DlssNr] Enabled=true` when the DLSSNR runtime is installed (both default to off upstream).
 4. Places `ReShade64.dll`, `renodx-mfgunlock.addon64` and `nvngx_dlssnr.dll` beside it.
-5. Replaces every `nvngx_dlss*.dll` in the game with the latest NVIDIA build, or with a pinned version (globally or per game, also downgrading).
+5. Replaces every `nvngx_dlss*.dll` in the game with the latest NVIDIA build, or with a pinned version (globally or per game, also downgrading). Games that ship no DLSS have this off by default; OptiScaler still gets an `nvngx_dlss.dll` so it can offer DLSS.
 6. Optionally replaces all `sl.*.dll` the game ships with one matching Streamline release (never mixed, never adds plugins).
 7. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.
 
@@ -27,11 +28,13 @@ Settings also pre-configures DLSSNR (passes, model resolution, style, strengths)
 
 Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, frame generation, DLSSNR) and ReShade (overlay, effects, screenshot, reload).
 
-**Presets**: save the whole OptiScaler / ReShade configuration (options, keybinds, overrides) under a name, load it, or assign it to single games. **Reset to defaults** restores the app's profile.
+**Install mode**: OptiScaler-NR (default, the main purpose) or **ReShade + add-ons**, which installs ReShade itself as the proxy (`dxgi.dll`, `d3d12.dll`, `d3d11.dll`, `d3d9.dll`, `dinput8.dll` or `opengl32.dll`) with MFG Unlock and the DLSS / Streamline updates, without OptiScaler or DLSSNR. Set the default in Settings and override it per game; switching removes the other mode's files.
+
+**Presets**: save the whole OptiScaler / ReShade configuration (options, keybinds, overrides) under a name, load it, or assign it to single games. The built-in **Recommended (ApolloF)** preset holds the tuned setup (DLSS upscaler, preset override, overlay on **Del**, DLSSNR strengths and HDR tone mapping, ReShade tutorial skipped). **Reset to defaults** goes back to the upstream defaults.
 
 **Config check**: before installing a new OptiScaler-NR release the app compares its OptiScaler.ini with every key it manages and warns when keys disappeared or the release is a newer major line than tested.
 
-**NVIDIA profile** (per game only; the global driver profile is read, never written): DLSS SR / RR / FG preset overrides, DLSS render resolution, multi frame generation count, Smooth Motion, RTX HDR, RTX Dynamic Vibrance, FPS limiter, VSync and power mode, written straight to the driver profile via NvAPI like NVIDIA Profile Inspector. Nothing is loaded until the tab is opened.
+**NVIDIA profile** (per game only; the global driver profile is read, never written): DLSS SR / RR / FG preset overrides, DLSS render resolution, multi frame generation count, Smooth Motion, RTX HDR, RTX Dynamic Vibrance, FPS limiter, VSync and power mode, written straight to the driver profile via NvAPI like NVIDIA Profile Inspector. Nothing is loaded until the tab is opened. The scan detects which DLSS features a game ships (SR, RR, FG, Reflex, from `nvngx_*` and Streamline `sl.*` files); the tab lists them, moves presets for missing features into a collapsed group, and suggests Smooth Motion for games without FG. The game list shows RR / FG / Reflex badges.
 
 **Update all** re-applies everything to each managed game after a new release or after a game patch reverts the DLLs.
 
@@ -41,7 +44,9 @@ Games with anti-cheat (EAC, BattlEye, GameGuard, …) are flagged and need an ex
 
 ## First run
 
-`nvngx_dlssnr.dll` and `ReShade64.dll` (full add-on build) can't be redistributed. Put them next to `DLSSUpdater.exe` on first launch, or import them under **Settings → Local components**. They're stored in `%LocalAppData%\DLSSUpdater\components`.
+`nvngx_dlssnr.dll` can't be redistributed. Put it next to `DLSSUpdater.exe` on first launch, or import it under **Settings → Local components**. It's stored in `%LocalAppData%\DLSSUpdater\components`.
+
+ReShade is downloaded from reshade.me on the first install that needs it (add-on build, cached per version). To use your own build, import `ReShade64.dll` the same way; **Use download** switches back.
 
 ## Seaglass add-on
 
@@ -64,4 +69,4 @@ dotnet publish src/DLSSUpdater -c Release -o publish
 
 Produces a single self-contained `publish\DLSSUpdater.exe` (.NET 8, WPF). Tagging `v*` builds it on GitHub Actions and attaches it to a release.
 
-`DLSSU_INTEGRATION=1` enables a test that downloads the real releases and installs them into a temporary folder.
+`DLSSU_INTEGRATION=1` enables a test that downloads the real releases (including ReShade from reshade.me) and installs them into a temporary folder.
