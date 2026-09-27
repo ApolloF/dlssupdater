@@ -4,20 +4,28 @@ using DLSSUpdater.Core;
 namespace DLSSUpdater.Addon;
 
 /// <summary>
-/// Tells WaterLauncher about this add-on by writing its addon.json into WaterLauncher's add-ons
-/// folder. WaterLauncher keeps it off until the user turns it on (and pins this exe's hash).
+/// Tells Seaglass about this add-on by writing its addon.json into Seaglass's add-ons
+/// folder. Seaglass keeps it off until the user turns it on (and pins this exe's hash).
 /// </summary>
 public static class AddonRegistration
 {
     public const string Id = "dlssupdater";
 
-    public static string AddonsDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WaterLauncher", "addons");
+    static string Local => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+    /// <summary>
+    /// Seaglass's add-ons folder. Seaglass was called WaterLauncher before 1.5; a WaterLauncher
+    /// that hasn't updated yet still has its own folder (Seaglass moves it over when it first starts).
+    /// </summary>
+    public static string AddonsDir =>
+        !Directory.Exists(Path.Combine(Local, "Seaglass")) && Directory.Exists(Path.Combine(Local, "WaterLauncher"))
+            ? Path.Combine(Local, "WaterLauncher", "addons")
+            : Path.Combine(Local, "Seaglass", "addons");
 
     public static string ManifestPath => Path.Combine(AddonsDir, Id, "addon.json");
 
-    /// <summary>WaterLauncher has run on this PC (its data folder exists).</summary>
-    public static bool WaterLauncherFound => Directory.Exists(Path.GetDirectoryName(AddonsDir)!);
+    /// <summary>Seaglass has run on this PC (its data folder exists).</summary>
+    public static bool SeaglassFound => Directory.Exists(Path.GetDirectoryName(AddonsDir)!);
 
     public static bool Registered => File.Exists(ManifestPath);
 
@@ -42,13 +50,13 @@ public static class AddonRegistration
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Can't tell where DLSS Updater is");
         Directory.CreateDirectory(Path.GetDirectoryName(ManifestPath)!);
         FileUtil.AtomicWriteText(ManifestPath, Manifest(exe).ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        Log.Info($"Connected to WaterLauncher ({ManifestPath})");
+        Log.Info($"Connected to Seaglass ({ManifestPath})");
     }
 
     public static void Unregister()
     {
         var dir = Path.GetDirectoryName(ManifestPath)!;
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
-        Log.Info("Disconnected from WaterLauncher");
+        Log.Info("Disconnected from Seaglass");
     }
 }

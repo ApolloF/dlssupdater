@@ -326,30 +326,30 @@ public sealed partial class SettingsViewModel : ObservableObject
         _main.RescanCommand.Execute(null);
     }
 
-    // ---------- WaterLauncher ----------
+    // ---------- Seaglass ----------
 
-    [ObservableProperty] private bool _waterLauncherConnected = Addon.AddonRegistration.Registered;
+    [ObservableProperty] private bool _seaglassConnected = Addon.AddonRegistration.Registered;
 
-    public string WaterLauncherHint => WaterLauncherConnected
-        ? "Connected. Turn DLSS Updater on in WaterLauncher: Settings, Add-ons. It then shows each game's DLSS version and puts DLSS back before a game starts when an update replaced it."
-        : Addon.AddonRegistration.WaterLauncherFound
-            ? "Show DLSS versions in WaterLauncher and put DLSS back automatically before a game starts."
-            : "WaterLauncher isn't on this PC. It's a game launcher that can use DLSS Updater as an add-on.";
+    public string SeaglassHint => SeaglassConnected
+        ? "Connected. With DLSS Updater turned on under Settings, Add-ons, Seaglass shows each game's DLSS version and puts DLSS back before a game starts when an update replaced it."
+        : Addon.AddonRegistration.SeaglassFound
+            ? "Show DLSS versions in Seaglass and put DLSS back automatically before a game starts (Seaglass builds with add-on support)."
+            : "Seaglass isn't on this PC. It's a game launcher that can use DLSS Updater as an add-on.";
 
     [RelayCommand]
-    private void ToggleWaterLauncher()
+    private void ToggleSeaglass()
     {
         try
         {
-            if (WaterLauncherConnected) Addon.AddonRegistration.Unregister();
+            if (SeaglassConnected) Addon.AddonRegistration.Unregister();
             else Addon.AddonRegistration.Register();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            Views.Dialog.Show("WaterLauncher", ex.Message);
+            Views.Dialog.Show("Seaglass", ex.Message);
         }
-        WaterLauncherConnected = Addon.AddonRegistration.Registered;
-        OnPropertyChanged(nameof(WaterLauncherHint));
+        SeaglassConnected = Addon.AddonRegistration.Registered;
+        OnPropertyChanged(nameof(SeaglassHint));
     }
 
     [RelayCommand]
