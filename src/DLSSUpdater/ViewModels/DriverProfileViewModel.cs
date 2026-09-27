@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DLSSUpdater.Core;
+using DLSSUpdater.Scan;
 
 namespace DLSSUpdater.ViewModels;
 
@@ -18,6 +19,27 @@ public sealed partial class NvOptionViewModel(string label, string hint, string 
     public string Topic { get; } = topic;
     public uint[] Ids { get; } = ids;
     public OptionChoice[] Choices { get; } = choices;
+    /// <summary>Game feature this driver setting acts on; None = applies to every game.</summary>
+    public GameFeatures Requires { get; init; }
+    /// <summary>Whether the game uses the feature (false moves the option into "not used by this game").</summary>
+    public bool Relevant { get; private set; } = true;
+    /// <summary>Why the option is (or isn't) worth changing for this game.</summary>
+    public string? Note { get; private set; }
+
+    public void ApplyFeatures(GameFeatures features)
+    {
+        Relevant = Requires == GameFeatures.None || features.HasFlag(Requires);
+        Note = !Relevant ? $"The game ships no DLSS {Requires switch
+            {
+                GameFeatures.SR => "Super Resolution",
+                GameFeatures.RR => "Ray Reconstruction",
+                GameFeatures.FG => "Frame Generation",
+                _ => Requires.ToString(),
+            }} files, so this has no effect."
+            : Topic == "nv-smooth-motion"
+                ? features.HasFlag(GameFeatures.FG) ? "The game has DLSS Frame Generation; use that instead." : "Recommended here: the game has no DLSS Frame Generation."
+            : null;
+    }
     public OptionChoice? Loaded { get; private set; }
 
     /// <summary>Stable list for the dropdown (rebuilt only on load, so the ComboBox never resets the selection).</summary>
@@ -92,18 +114,54 @@ public sealed partial class DriverProfileViewModel : ObservableObject
     private readonly string _exePath;
     private readonly string _gameName;
 
-    public DriverProfileViewModel(string exePath, string gameName)
+    /// <param name="features">What the game ships (null = unknown: every option is shown as relevant).</param>
+    public DriverProfileViewModel(string exePath, string gameName, GameFeatures? features = null, Version? fgVersion = null)
     {
         _exePath = exePath;
         _gameName = gameName;
+        Features = features;
         Options = new(NvSettings.Create());
-        foreach (var o in Options) o.PropertyChanged += (_, e) =>
+        foreach (var o in Options)
         {
-            if (e.PropertyName == nameof(NvOptionViewModel.IsDirty)) OnPropertyChanged(nameof(IsDirty));
-        };
+            if (features is { } f) o.ApplyFeatures(f);
+            o.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(NvOptionViewModel.IsDirty)) OnPropertyChanged(nameof(IsDirty));
+            };
+        }
+        Relevant = Options.Where(o => o.Relevant).ToList();
+        Other = Options.Where(o => !o.Relevant).ToList();
+        FeatureSummary = features is { } g ? Summarize(g, fgVersion) : null;
     }
 
+    public GameFeatures? Features { get; }
     public ObservableCollection<NvOptionViewModel> Options { get; }
+    /// <summary>Options for features the game uses (or that apply to every game).</summary>
+    public IReadOnlyList<NvOptionViewModel> Relevant { get; }
+    /// <summary>Options for DLSS features the game doesn't ship; collapsed by default.</summary>
+    public IReadOnlyList<NvOptionViewModel> Other { get; }
+    public bool HasOther => Other.Count > 0;
+    public string OtherLabel => $"{(ShowOther ? "Hide" : "Show")} {Other.Count} setting{(Other.Count == 1 ? "" : "s")} this game doesn't use";
+    public string? FeatureSummary { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OtherLabel))]
+    private bool _showOther;
+
+    [RelayCommand]
+    private void ToggleOther() => ShowOther = !ShowOther;
+
+    internal static string Summarize(GameFeatures f, Version? fgVersion)
+    {
+        var parts = new List<string>();
+        if (f.HasFlag(GameFeatures.SR)) parts.Add("Super Resolution");
+        if (f.HasFlag(GameFeatures.RR)) parts.Add("Ray Reconstruction");
+        if (f.HasFlag(GameFeatures.FG)) parts.Add("Frame Generation" + (fgVersion is { Major: >= 310 } ? " (MFG capable)" : ""));
+        if (f.HasFlag(GameFeatures.Reflex)) parts.Add("Reflex");
+        if (parts.Count == 0)
+            return "No DLSS files found in this game: DLSS settings have no effect here. Smooth Motion, RTX HDR, the FPS limiter and VSync still apply.";
+        return "Detected in the game files: DLSS " + string.Join(" · ", parts) + (f.HasFlag(GameFeatures.Streamline) ? " (via Streamline)" : "") + ".";
+    }
     public bool IsDirty => Options.Any(o => o.IsDirty);
 
     [ObservableProperty] private string _status = "Not loaded";
@@ -264,7 +322,7 @@ public static class NvSettings
             Preset(SrPreset, SrOverride, 'J', "Like K with slightly less ghosting but more flicker; NVIDIA recommends K over J."),
             Preset(SrPreset, SrOverride, 'M', "Default for Performance mode."),
             Preset(SrPreset, SrOverride, 'L', "Default for Ultra Performance mode."),
-        ]),
+        ]) { Requires = GameFeatures.SR },
         new("DLSS render resolution", "Override the game's DLSS quality mode.", "nv-sr-mode", [SrMode, SrRatio],
         [
             Inherit,
@@ -276,14 +334,14 @@ public static class NvSettings
             C("Ultra performance (33%)", W(SrMode, 5), "Renders at 33% per axis."),
             C("Custom 77%", W(SrMode, 6, SrRatio, 77), "Between Quality and DLAA."),
             C("Custom 85%", W(SrMode, 6, SrRatio, 85), "Close to native."),
-        ]),
+        ]) { Requires = GameFeatures.SR },
         new("DLSS Ray Reconstruction preset", "Force a DLSS RR model preset (with the RR override switch).", "nv-rr-preset", [RrPreset, RrOverride],
         [
             Inherit,
             C("Off", W(RrPreset, 0, RrOverride, 0), "No RR override for this game."),
             Preset(RrPreset, RrOverride, 'D', "Transformer model."),
             Preset(RrPreset, RrOverride, 'F', "Default model (RR 2)."),
-        ]),
+        ]) { Requires = GameFeatures.RR },
         new("DLSS Frame Generation preset", "Force a DLSS FG model (with the FG override switch).", "nv-fg-preset", [FgPreset, FgOverride],
         [
             Inherit,
@@ -291,7 +349,7 @@ public static class NvSettings
             C("NVIDIA default", W(FgPreset, 0xFFFFFE, FgOverride, 1), "The driver's default FG model (the NVIDIA App's 'Default')."),
             Preset(FgPreset, FgOverride, 'A', "FG model preset A."),
             Preset(FgPreset, FgOverride, 'B', "FG model preset B."),
-        ]),
+        ]) { Requires = GameFeatures.FG },
         new("Multi frame generation", "Override the frame generation multiplier (native 3x+ needs RTX 50).", "nv-mfg", [MfgCount],
         [
             Inherit,
@@ -299,7 +357,7 @@ public static class NvSettings
             C("2x", W(MfgCount, 1), "One generated frame per rendered frame."),
             C("3x", W(MfgCount, 2), "Two generated frames."),
             C("4x", W(MfgCount, 3), "Three generated frames."),
-        ]),
+        ]) { Requires = GameFeatures.FG },
         new("Smooth Motion", "Driver frame generation for games without DLSS FG.", "nv-smooth-motion", [0xB0D384C0],
         [
             Inherit,

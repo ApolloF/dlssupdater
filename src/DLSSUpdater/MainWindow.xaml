@@ -95,6 +95,8 @@
                                 ToolTip="{Binding Topic, Converter={StaticResource HelpTip}}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Hint}" Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding Note}" FontSize="11.5" Foreground="{StaticResource Accent}" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="{Binding Note, Converter={StaticResource NullToVis}}" />
                 </StackPanel>
                 <ComboBox Grid.Column="1" Width="220" VerticalAlignment="Center" ItemsSource="{Binding DisplayChoices}" SelectedItem="{Binding Selected}"
                           ItemContainerStyle="{StaticResource DescribedItem}" MaxDropDownHeight="480" />
@@ -112,8 +114,16 @@
                     </StackPanel>
                 </Grid>
                 <ProgressBar IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8" />
+                <TextBlock Text="{Binding FeatureSummary}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Visibility="{Binding FeatureSummary, Converter={StaticResource NullToVis}}" />
                 <Border Style="{StaticResource Card}" Padding="16,4" Visibility="{Binding Loaded, Converter={StaticResource BoolToVis}}">
-                    <ItemsControl ItemsSource="{Binding Options}" ItemTemplate="{StaticResource NvOptionRow}" />
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding Relevant}" ItemTemplate="{StaticResource NvOptionRow}" />
+                        <Button Content="{Binding OtherLabel}" Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Margin="0,4,0,8"
+                                Command="{Binding ToggleOtherCommand}" Visibility="{Binding HasOther, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Other}" ItemTemplate="{StaticResource NvOptionRow}" Opacity="0.6"
+                                      Visibility="{Binding ShowOther, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </DataTemplate>
@@ -340,6 +350,10 @@
                                                 </Style>
                                             </Border.Style>
                                             <TextBlock Text="{Binding DlssBadge}" Style="{StaticResource BadgeText}" />
+                                        </Border>
+                                        <Border Style="{StaticResource Badge}" Visibility="{Binding HasFeatureBadge, Converter={StaticResource BoolToVis}}"
+                                                ToolTip="DLSS features found in the game files (Ray Reconstruction, Frame Generation, Reflex)">
+                                            <TextBlock Text="{Binding FeatureBadge}" Style="{StaticResource BadgeText}" />
                                         </Border>
                                         <Border Style="{StaticResource Badge}" Background="{StaticResource Accent}" BorderBrush="{StaticResource Accent}"
                                                 Visibility="{Binding IsOptiInstalled, Converter={StaticResource BoolToVis}}">

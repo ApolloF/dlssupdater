@@ -147,7 +147,7 @@ public sealed partial class GameViewModel : ObservableObject
     partial void OnDetailTabChanged(string value)
     {
         if (value != "Nvidia") return;
-        if (Driver is null && DriverExe is { } exe) Driver = new DriverProfileViewModel(exe, Name);
+        if (Driver is null && DriverExe is { } exe) Driver = new DriverProfileViewModel(exe, Name, Features, Info.FgVersion);
         if (Driver is { Loaded: false, Busy: false } d) d.LoadCommand.Execute(null);
     }
 
@@ -182,6 +182,19 @@ public sealed partial class GameViewModel : ObservableObject
     public string? EffectiveDlssTag => DlssChoice?.Tag ?? _s.Settings.DlssTag;
 
     public bool HasDlss => Info.Dlss.Count > 0;
+
+    /// <summary>What the game ships, plus DLSS SR when OptiScaler (which can run DLSS in any game) is installed.</summary>
+    public GameFeatures Features => Info.Features | (IsOptiInstalled && HasDlssForOpti ? GameFeatures.SR : GameFeatures.None);
+    private bool HasDlssForOpti => Manifest?.Files.Any(f => Path.GetFileName(f).Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)) == true;
+
+    /// <summary>Short list for the game list / header, e.g. "RR · FG · Reflex" (SR is implied by the DLSS badge).</summary>
+    public string FeatureBadge => string.Join(" · ", new[]
+    {
+        Info.Features.HasFlag(GameFeatures.RR) ? "RR" : null,
+        Info.Features.HasFlag(GameFeatures.FG) ? Info.FgVersion is { Major: >= 310 } ? "FG/MFG" : "FG" : null,
+        Info.Features.HasFlag(GameFeatures.Reflex) ? "Reflex" : null,
+    }.OfType<string>());
+    public bool HasFeatureBadge => FeatureBadge.Length > 0;
     public bool HasAntiCheat => Info.AntiCheat is not null;
     public string? AntiCheat => Info.AntiCheat;
     public bool IsInstalled => Manifest is not null || Info.Installs.Count > 0;
@@ -212,6 +225,7 @@ public sealed partial class GameViewModel : ObservableObject
 
     public void Load(GameInfo info)
     {
+        if (Driver is not null && Driver.Features != Features) Driver = null; // rebuilt with the new scan when the tab opens
         Info = info;
         _loading = true;
         var over = _s.Settings.Games.GetValueOrDefault(Id);

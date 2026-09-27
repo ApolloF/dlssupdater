@@ -123,6 +123,10 @@ public static class HelpTopics
             "Don't set the HDR color space; for games or mods that set it themselves and get wrong colours when OptiScaler does too."),
 
         // ---------- NVIDIA driver ----------
+        new("nv-features", "NVIDIA", "Detected game features",
+            "The NVIDIA tab reads which DLSS runtimes the game ships: nvngx_dlss / dlssd / dlssg.dll and Streamline's sl.dlss / sl.dlss_d / sl.dlss_g / sl.reflex.dll. " +
+            "Presets for features the game doesn't have are moved under 'settings this game doesn't use', since the driver override can't add them. " +
+            "OptiScaler counts as DLSS Super Resolution once it has nvngx_dlss.dll. Games that fetch DLSS only through NVIDIA's OTA updates can't be detected from files."),
         new("nv-sr-preset", "NVIDIA", "DLSS Super Resolution preset",
             "Tells the driver which DLSS SR model preset to use for this game, whatever the game asks for (like the NVIDIA App's DLSS Override - Model Presets). " +
             "The preset and the SR override switch are written together, as the NVIDIA App stores them; Off writes both as off; Use global removes both. " +
