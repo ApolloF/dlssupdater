@@ -10,7 +10,7 @@ public class InstallerTests : IDisposable
     private readonly string _target;
     private readonly ComponentStore _store;
 
-    private const string ReleaseIni = "[Menu]\nShortcutKey=auto\n[Plugins]\nLoadReshade=auto\n[Hotfix]\nManualInputPolling=auto\n";
+    private const string ReleaseIni = "[Menu]\nShortcutKey=auto\n[Plugins]\nLoadReshade=auto\n[Hotfix]\nManualInputPolling=auto\n[DlssNr]\nEnabled=auto\n";
 
     public InstallerTests()
     {
@@ -87,7 +87,7 @@ public class InstallerTests : IDisposable
     private static InstallOptions Full => new()
     {
         Opti = true, ReShade = true, Mfg = true, DlssNr = true, Dlss = true, AddMissingDlss = true,
-        Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = true,
+        Proxy = "dxgi.dll", Overrides = ConfigProfile.Recommended(), CarryOverIni = true,
     };
 
     private string T(string rel) => File.ReadAllText(Path.Combine(_target, rel));
@@ -276,7 +276,7 @@ public class InstallerTests : IDisposable
     public async Task IniModes(bool carryOver, bool overwrite, string menuKey, string? polling)
     {
         Write(Path.Combine(_target, "OptiScaler.ini"), "[Menu]\nShortcutKey=0x24\n[Hotfix]\nManualInputPolling=true\n");
-        var o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = carryOver, OverwriteIni = overwrite };
+        var o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Recommended(), CarryOverIni = carryOver, OverwriteIni = overwrite };
         await new Installer(_store).InstallAsync(Game(), _target, o, null, default);
 
         var ini = IniFile.Load(Path.Combine(_target, "OptiScaler.ini"));
@@ -304,5 +304,45 @@ public class InstallerTests : IDisposable
 
         await installer.UninstallAsync(Game(), _target, default);
         Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task UpstreamDefaults_OnlyRequiredKeys_FollowComponents()
+    {
+        File.Delete(Path.Combine(_target, "OptiScaler.ini"));
+        var installer = new Installer(_store);
+        var o = new InstallOptions { Opti = true, ReShade = true, DlssNr = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults() };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+
+        var expected = IniFile.Parse(ReleaseIni);
+        expected.Set("Plugins", "LoadReshade", "true");
+        expected.Set("DlssNr", "Enabled", "true");
+        Assert.Equal(expected.ToString(), T("OptiScaler.ini"));
+
+        // ReShade and DLSSNR dropped: both keys go back to the release value.
+        o = new InstallOptions { Opti = true, Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults() };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal(ReleaseIni, T("OptiScaler.ini"));
+
+        // An explicit profile value wins over the required one.
+        o = new InstallOptions { Opti = true, DlssNr = true, Proxy = "dxgi.dll", Overrides = [new("DlssNr", "Enabled", "false")] };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("false", IniFile.Load(Path.Combine(_target, "OptiScaler.ini")).Get("DlssNr", "Enabled"));
+    }
+
+    [Fact]
+    public void RecommendedPreset_IsBuiltIn_AndNotSaved()
+    {
+        var s = new AppSettings();
+        Assert.Empty(s.IniOverrides);
+        Assert.Empty(s.ReShadeOverrides);
+        var rec = Assert.Single(s.AllPresets);
+        Assert.True(rec.BuiltIn);
+        Assert.Contains(rec.Opti, x => x.Id == "Menu/ShortcutKey" && x.Value == "0x2e");
+
+        s.Games["g"] = new GameOverride { Preset = ConfigProfile.RecommendedName };
+        Assert.Same(rec.Name, s.PresetFor("g")!.Name);
+        s.Save();
+        Assert.Empty(AppSettings.Load().Presets);
     }
 }

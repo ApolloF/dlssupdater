@@ -104,7 +104,7 @@ public sealed partial class GameViewModel : ObservableObject
         _loading = true;
         PresetChoices.Clear();
         PresetChoices.Add(GlobalPreset);
-        foreach (var p in _s.Settings.Presets) PresetChoices.Add(p.Name);
+        foreach (var p in _s.Settings.AllPresets) PresetChoices.Add(p.Name);
         PresetChoice = _s.Settings.PresetFor(Id)?.Name ?? GlobalPreset;
         _loading = wasLoading;
     }

@@ -588,10 +588,12 @@
                                           ToolTip="Load a saved preset into the settings below" />
                                 <Button Content="Save as…" Style="{StaticResource BtnGhost}" Margin="8,0,0,0" Command="{Binding SavePresetCommand}" />
                                 <Button Content="Delete" Style="{StaticResource BtnGhost}" Command="{Binding DeletePresetCommand}"
-                                        Visibility="{Binding SelectedPreset, Converter={StaticResource NullToVis}}" />
+                                        Visibility="{Binding CanDeletePreset, Converter={StaticResource BoolToVis}}" />
+                                <Button Style="{StaticResource InfoBtn}" CommandParameter="presets" VerticalAlignment="Center"
+                                        ToolTip="{Binding Source=presets, Converter={StaticResource HelpTip}}" />
                             </StackPanel>
                             <Button Content="Reset to defaults" Style="{StaticResource BtnGhost}" HorizontalAlignment="Right" Command="{Binding ResetAllCommand}"
-                                    ToolTip="All OptiScaler / ReShade settings, keybinds and options back to the app defaults" />
+                                    ToolTip="All OptiScaler / ReShade settings, keybinds and options back to the upstream projects' defaults" />
                         </Grid>
                         <Grid Margin="0,14,0,0">
                             <Border Style="{StaticResource Divider}" VerticalAlignment="Bottom" />

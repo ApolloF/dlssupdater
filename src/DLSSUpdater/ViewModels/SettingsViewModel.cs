@@ -59,14 +59,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string _tab = "General";
 
-    [ObservableProperty] private string? _selectedPreset;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDeletePreset))]
+    private string? _selectedPreset;
 
     public ObservableCollection<string> PresetNames { get; } = [];
+
+    /// <summary>User presets can be deleted; built-in ones can't.</summary>
+    public bool CanDeletePreset => SelectedPreset is { } n && Settings.Presets.Any(p => p.Name == n);
 
     partial void OnSelectedPresetChanged(string? value)
     {
         if (value is null || _reloading) return;
-        var p = Settings.Presets.FirstOrDefault(x => x.Name == value);
+        var p = Settings.AllPresets.FirstOrDefault(x => x.Name == value);
         if (p is null) return;
         Replace(Overrides, p.Opti);
         Replace(ReShadeOverrides, p.ReShade);
@@ -94,6 +99,11 @@ public sealed partial class SettingsViewModel : ObservableObject
             "Saves the current OptiScaler.ini and ReShade.ini settings, keybinds and options under a name. " +
             "Presets can be loaded here or assigned to single games.", SelectedPreset ?? "My preset");
         if (name is null) return;
+        if (Settings.AllPresets.Any(p => p.BuiltIn && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Views.Dialog.Show("Save preset", $"'{name}' is built in and can't be replaced. Pick another name.");
+            return;
+        }
         Settings.Presets.RemoveAll(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         Settings.Presets.Add(new ConfigPreset { Name = name, Opti = Copy(Overrides), ReShade = Copy(ReShadeOverrides) });
         Save();
@@ -106,6 +116,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void DeletePreset()
     {
         if (SelectedPreset is not { } name) return;
+        if (Settings.AllPresets.Any(p => p.BuiltIn && p.Name == name))
+        {
+            Views.Dialog.Show("Delete preset", $"'{name}' is built in and can't be deleted.");
+            return;
+        }
         if (!Views.Dialog.Confirm("Delete preset", $"Delete preset '{name}'? Games using it fall back to the current settings.", "Delete", danger: true)) return;
         Settings.Presets.RemoveAll(p => p.Name == name);
         foreach (var g in Settings.Games.Values.Where(g => g.Preset == name)) g.Preset = null;
@@ -118,7 +133,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         _reloading = true;
         PresetNames.Clear();
-        foreach (var p in Settings.Presets) PresetNames.Add(p.Name);
+        foreach (var p in Settings.AllPresets) PresetNames.Add(p.Name);
         SelectedPreset = select;
         _reloading = false;
     }
@@ -262,7 +277,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void ResetAll()
     {
         if (!Views.Dialog.Confirm("Reset to defaults",
-                "Reset all OptiScaler.ini and ReShade.ini settings, keybinds and options to the app defaults? Saved presets are kept.", "Reset", danger: true))
+                "Reset all OptiScaler.ini and ReShade.ini settings, keybinds and options to the upstream defaults (what OptiScaler-NR, ReShade and MFG Unlock ship with)? " +
+                "Saved presets are kept; load '" + ConfigProfile.RecommendedName + "' for the tuned setup.", "Reset", danger: true))
             return;
         ResetOverrides();
         _reloading = true;
@@ -362,7 +378,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         foreach (var p in Settings.ManualGames) Folders.Add(new FolderEntry(p, "Game"));
         foreach (var p in Settings.LibraryRoots) Folders.Add(new FolderEntry(p, "Library"));
 
-        ReloadPresets(SelectedPreset is { } sp && Settings.Presets.Any(p => p.Name == sp) ? sp : null);
+        ReloadPresets(SelectedPreset is { } sp && Settings.AllPresets.Any(p => p.Name == sp) ? sp : null);
 
         DlssChoices.Clear();
         var store = _main.S.Store;

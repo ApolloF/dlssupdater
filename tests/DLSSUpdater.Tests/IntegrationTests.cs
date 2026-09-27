@@ -43,7 +43,7 @@ public class IntegrationTests
         {
             Opti = true, Mfg = true, Dlss = true, AddMissingDlss = true,
             ReShade = haveLocal, DlssNr = haveLocal,
-            Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(),
+            Proxy = "dxgi.dll", Overrides = ConfigProfile.Recommended(),
         };
         var installer = new Installer(store);
         await installer.InstallAsync(info, target, o, null, default);

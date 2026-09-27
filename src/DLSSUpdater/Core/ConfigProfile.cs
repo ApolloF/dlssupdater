@@ -19,8 +19,19 @@ public sealed record MergeResult(string Text, Dictionary<string, string> Applied
 
 public static class ConfigProfile
 {
-    /// <summary>Values that differ from "auto" in the reference OptiScaler.ini this tool was built around.</summary>
-    public static List<IniOverride> Defaults() =>
+    /// <summary>
+    /// App defaults: nothing on top of the release's OptiScaler.ini, so every game starts with the upstream
+    /// projects' own defaults. Only <see cref="Required"/> keys are added so installed components actually load.
+    /// </summary>
+    public static List<IniOverride> Defaults() => [];
+
+    /// <summary>ReShade.ini defaults: none (ReShade and the MFG add-on ship without an ini and use their own defaults).</summary>
+    public static List<IniOverride> ReShadeDefaults() => [];
+
+    public const string RecommendedName = "Recommended (ApolloF)";
+
+    /// <summary>The tuned OptiScaler.ini values this tool was built around (former defaults), offered as a built-in preset.</summary>
+    public static List<IniOverride> Recommended() =>
     [
         new("Upscalers", "Dx12Upscaler", "dlss"),
         new("DLSS", "RenderPresetOverride", "true"),
@@ -40,11 +51,37 @@ public static class ConfigProfile
         new("DlssNr", "ReversibleMode", "3"),
     ];
 
-    /// <summary>ReShade.ini values written on install; ReShade fills in everything else on first launch.</summary>
-    public static List<IniOverride> ReShadeDefaults() =>
+    /// <summary>ReShade.ini values of the built-in preset; ReShade fills in everything else on first launch.</summary>
+    public static List<IniOverride> RecommendedReShade() =>
     [
         new("OVERLAY", "TutorialProgress", "4"),
     ];
+
+    public static ConfigPreset RecommendedPreset() =>
+        new() { Name = RecommendedName, Opti = Recommended(), ReShade = RecommendedReShade(), BuiltIn = true };
+
+    /// <summary>
+    /// Keys without which an installed component does nothing (upstream ships both as false): ReShade loaded by
+    /// OptiScaler and DLSSNR turned on. Added unless the profile sets the key itself; like profile values they
+    /// never replace a value the game's own ini already has.
+    /// </summary>
+    public static List<IniOverride> Required(InstallOptions o)
+    {
+        var list = new List<IniOverride>();
+        if (!o.Opti) return list;
+        if (o.ReShade) list.Add(new("Plugins", "LoadReshade", "true"));
+        if (o.DlssNr) list.Add(new("DlssNr", "Enabled", "true"));
+        return list;
+    }
+
+    /// <summary>The profile plus every <see cref="Required"/> key it doesn't set itself.</summary>
+    public static List<IniOverride> WithRequired(IEnumerable<IniOverride> profile, InstallOptions o)
+    {
+        var list = profile.ToList();
+        var ids = list.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        list.AddRange(Required(o).Where(r => !ids.Contains(r.Id)));
+        return list;
+    }
 
     private static bool IsAuto(string? v) => v is null || v.Equals("auto", StringComparison.OrdinalIgnoreCase);
 

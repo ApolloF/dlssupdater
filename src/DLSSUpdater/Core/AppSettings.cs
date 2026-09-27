@@ -20,6 +20,8 @@ public sealed class ConfigPreset
     public string Name { get; set; } = "";
     public List<IniOverride> Opti { get; set; } = [];
     public List<IniOverride> ReShade { get; set; } = [];
+    /// <summary>Shipped with the app (the Recommended preset): can be loaded and assigned, not saved over or deleted.</summary>
+    [JsonIgnore] public bool BuiltIn { get; init; }
 }
 
 public sealed class AppSettings
@@ -48,8 +50,12 @@ public sealed class AppSettings
     public bool InstallStreamline { get; set; }
     public List<ConfigPreset> Presets { get; set; } = [];
 
+    /// <summary>Built-in presets first, then the user's.</summary>
+    [JsonIgnore]
+    public IEnumerable<ConfigPreset> AllPresets => [ConfigProfile.RecommendedPreset(), .. Presets];
+
     public ConfigPreset? PresetFor(string gameId) =>
-        Games.GetValueOrDefault(gameId)?.Preset is { } name ? Presets.FirstOrDefault(p => p.Name == name) : null;
+        Games.GetValueOrDefault(gameId)?.Preset is { } name ? AllPresets.FirstOrDefault(p => p.Name == name) : null;
     /// <summary>DLSS release tag to install; null = latest.</summary>
     public string? DlssTag { get; set; }
 
@@ -71,6 +77,7 @@ public sealed class AppSettings
                     s.Games = new Dictionary<string, GameOverride>(s.Games, StringComparer.OrdinalIgnoreCase);
                     if (!s.CarryOverGameIni && s.IniMode == "keep") s.IniMode = "fresh";
                     s.CarryOverGameIni = true;
+                    s.Presets.RemoveAll(p => p.Name.Equals(ConfigProfile.RecommendedName, StringComparison.OrdinalIgnoreCase));
                     return s;
                 }
             }

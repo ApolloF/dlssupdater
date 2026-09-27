@@ -52,7 +52,7 @@ public class IniTests
     public void Merge_GameSettingsWin_ProfileFillsAuto_KeepsNewKeys()
     {
         var current = "[Menu]\nShortcutKey=0x24\n[Upscalers]\nDx12Upscaler=xess\n[Plugins]\nLoadReshade=auto\n[Old]\nGone=auto\n";
-        var merged = IniFile.Parse(ConfigProfile.Merge(Release, current, ConfigProfile.Defaults(), carryOver: true).Text);
+        var merged = IniFile.Parse(ConfigProfile.Merge(Release, current, ConfigProfile.Recommended(), carryOver: true).Text);
 
         Assert.Equal("0x24", merged.Get("Menu", "ShortcutKey"));       // existing game setting is kept
         Assert.Equal("xess", merged.Get("Upscalers", "Dx12Upscaler"));
@@ -77,7 +77,7 @@ public class IniTests
     public void Merge_PreservesCrLf()
     {
         var crlf = Release.Replace("\n", "\r\n");
-        var merged = ConfigProfile.Merge(crlf, null, ConfigProfile.Defaults(), true).Text;
+        var merged = ConfigProfile.Merge(crlf, null, ConfigProfile.Recommended(), true).Text;
         Assert.DoesNotContain("\r\r", merged);
         Assert.Contains("LoadReshade=true\r\n", merged);
     }

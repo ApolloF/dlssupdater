@@ -335,7 +335,8 @@ public sealed partial class MainViewModel : ObservableObject
     private IEnumerable<(string Section, string Key)> ManagedOptiKeys() =>
         S.Settings.IniOverrides.Select(o => (o.Section, o.Key))
             .Concat(S.Settings.Presets.SelectMany(p => p.Opti).Select(o => (o.Section, o.Key)))
-            .Concat(ConfigProfile.Defaults().Select(o => (o.Section, o.Key)))
+            .Concat(ConfigProfile.Recommended().Select(o => (o.Section, o.Key)))
+            .Concat(ConfigProfile.Required(new InstallOptions { Opti = true, ReShade = true, DlssNr = true }).Select(o => (o.Section, o.Key)))
             .Concat(KeybindDef.Opti.Select(k => (k.Section, k.Key)))
             .Concat(SettingsVm.NrOptions.Concat(SettingsVm.TonemapOptions).Concat(SettingsVm.HdrOptions).Select(o => (o.Section, o.Key)));
 

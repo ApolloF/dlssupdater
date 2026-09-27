@@ -178,14 +178,15 @@ public sealed class Installer(ComponentStore store)
         var releaseIni = File.ReadAllText(Path.Combine(pkg, "OptiScaler.ini"));
         string? currentIni = File.Exists(iniPath) ? File.ReadAllText(iniPath) : null;
         if (currentIni is not null && !m.Owns(ctx.Rel(iniPath))) Backup(ctx, iniPath, "file", copy: true);
+        var profile = ConfigProfile.WithRequired(o.Overrides, o);
         if (currentIni is not null && m.Owns(ctx.Rel(iniPath)) && m.OptiIni.Count == 0)
         {
             // Installs from 1.0.0 didn't record what they wrote; values still equal to the profile are ours.
             var cur = IniFile.Parse(currentIni);
-            foreach (var ov in o.Overrides)
+            foreach (var ov in profile)
                 if (string.Equals(cur.Get(ov.Section, ov.Key), ov.Value, StringComparison.OrdinalIgnoreCase)) m.OptiIni[ov.Id] = ov.Value;
         }
-        var merged = ConfigProfile.Merge(releaseIni, currentIni, o.Overrides, o.CarryOverIni, m.OptiIni, o.OverwriteIni);
+        var merged = ConfigProfile.Merge(releaseIni, currentIni, profile, o.CarryOverIni, m.OptiIni, o.OverwriteIni);
         FileUtil.AtomicWriteText(iniPath, merged.Text);
         m.OptiIni = merged.Applied;
         m.AddFile(ctx.Rel(iniPath));
