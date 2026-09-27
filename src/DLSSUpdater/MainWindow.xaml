@@ -747,17 +747,17 @@
                                 <TextBlock Text="GITHUB" Style="{StaticResource SectionTitle}" />
                                 <TextBox Text="{Binding GitHubToken, UpdateSourceTrigger=LostFocus}" Tag="Personal access token (optional, raises the API rate limit)" />
 
-                                <TextBlock Text="WATERLAUNCHER" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="SEAGLASS" Style="{StaticResource SectionTitle}" />
                                 <Border Style="{StaticResource Card}">
                                     <StackPanel>
-                                        <TextBlock Text="{Binding WaterLauncherHint}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                        <TextBlock Text="{Binding SeaglassHint}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
                                         <StackPanel Orientation="Horizontal">
-                                            <Button Command="{Binding ToggleWaterLauncherCommand}">
+                                            <Button Command="{Binding ToggleSeaglassCommand}">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                                        <Setter Property="Content" Value="Connect to WaterLauncher" />
+                                                        <Setter Property="Content" Value="Connect to Seaglass" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding WaterLauncherConnected}" Value="True">
+                                                            <DataTrigger Binding="{Binding SeaglassConnected}" Value="True">
                                                                 <Setter Property="Content" Value="Disconnect" />
                                                             </DataTrigger>
                                                         </Style.Triggers>

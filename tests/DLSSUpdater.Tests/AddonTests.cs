@@ -38,7 +38,7 @@ public class AddonTests
     {
         var game = TempDir("game");
         var msgs = await Talk(
-            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":1,"host":{"name":"WaterLauncher","version":"test"}}}""",
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":1,"host":{"name":"Seaglass","version":"test"}}}""",
             """{"jsonrpc":"2.0","id":2,"method":"game.nope","params":{}}""",
             "{not json",
             """{"jsonrpc":"2.0","id":3,"method":"game.status","params":{"game":{"dir":"relative\\path"}}}""",

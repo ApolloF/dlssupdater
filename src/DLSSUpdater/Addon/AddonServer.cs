@@ -9,8 +9,8 @@ using DLSSUpdater.ViewModels;
 namespace DLSSUpdater.Addon;
 
 /// <summary>
-/// "DLSSUpdater.exe --addon": DLSS Updater as a WaterLauncher add-on. It speaks JSON-RPC 2.0 over
-/// stdin/stdout, one message per line (WaterLauncher's docs/addon-protocol.md): it shows a game's
+/// "DLSSUpdater.exe --addon": DLSS Updater as a Seaglass add-on. It speaks JSON-RPC 2.0 over
+/// stdin/stdout, one message per line (Seaglass's docs/addon-protocol.md): it shows a game's
 /// DLSS and OptiScaler versions, puts DLSS back before a launch when a game update replaced it,
 /// and offers updating DLSS, installing OptiScaler and restoring the original files.
 /// </summary>
@@ -41,7 +41,7 @@ public sealed class AddonServer
         return new Services { Settings = settings, Store = store, Installer = new Installer(store) };
     }
 
-    /// <summary>Serves requests until stdin closes or WaterLauncher sends "shutdown".</summary>
+    /// <summary>Serves requests until stdin closes or Seaglass sends "shutdown".</summary>
     public async Task RunAsync(TextReader input)
     {
         var running = new List<Task>();
@@ -120,7 +120,7 @@ public sealed class AddonServer
     internal static string AppVersion =>
         typeof(AddonServer).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : "0";
 
-    // ---------- the game WaterLauncher asks about ----------
+    // ---------- the game Seaglass asks about ----------
 
     private static GameInfo Game(JsonObject p)
     {
@@ -129,7 +129,7 @@ public sealed class AddonServer
         if (!Path.IsPathFullyQualified(dir) || !Directory.Exists(dir))
             throw new AddonException(-32000, "The game's folder wasn't found");
         var title = g["title"]?.GetValue<string>() ?? Path.GetFileName(dir);
-        return GameScanner.Inspect(new GameEntry(title, dir, "WaterLauncher"));
+        return GameScanner.Inspect(new GameEntry(title, dir, "Seaglass"));
     }
 
     private GameViewModel Model(GameInfo info) => new(info, _services.Value);
@@ -258,7 +258,7 @@ public sealed class AddonServer
             if (vm.HasAntiCheat && vm.NeedsInjection(o) && !m.AntiCheatConfirmed)
                 throw new AddonException(-32000, $"{info.Name} uses {info.AntiCheat}; update it in DLSS Updater");
             await _services.Value.Installer.InstallAsync(info, target, o, null, ct);
-            Log.Info($"{info.Name}: DLSS put back after a game update (WaterLauncher)");
+            Log.Info($"{info.Name}: DLSS put back after a game update (Seaglass)");
             fixedAny = true;
         }
         return Message(fixedAny ? "DLSS is back after a game update" : "");
@@ -315,7 +315,7 @@ public sealed class AddonServer
     }
 }
 
-/// <summary>An error for WaterLauncher to show; the message is written for people.</summary>
+/// <summary>An error for Seaglass to show; the message is written for people.</summary>
 public sealed class AddonException(int code, string message) : Exception(message)
 {
     public int Code { get; } = code;

@@ -12,7 +12,7 @@ public partial class App : Application
     {
         if (e.Args.Contains("--addon"))
         {
-            // WaterLauncher add-on: no window, JSON-RPC on stdin/stdout until WaterLauncher lets go.
+            // Seaglass add-on: no window, JSON-RPC on stdin/stdout until Seaglass lets go.
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             Task.Run(async () =>
             {
@@ -27,7 +27,7 @@ public partial class App : Application
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             try { Addon.AddonRegistration.Register(); }
-            catch (Exception ex) { Log.Error("Connect to WaterLauncher", ex); }
+            catch (Exception ex) { Log.Error("Connect to Seaglass", ex); }
             Shutdown();
             return;
         }
