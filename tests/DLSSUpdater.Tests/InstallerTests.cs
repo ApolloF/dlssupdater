@@ -345,4 +345,32 @@ public class InstallerTests : IDisposable
         s.Save();
         Assert.Empty(AppSettings.Load().Presets);
     }
+
+    [Fact]
+    public async Task AddsSr_WithoutReplaceToggle_AndKeepsItCurrent()
+    {
+        File.Delete(Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64\nvngx_dlss.dll"));
+        File.Delete(Path.Combine(_target, "nvngx_dlssg.dll"));
+        var installer = new Installer(_store);
+        var o = new InstallOptions { Opti = true, AddMissingDlss = true, Proxy = "dxgi.dll" };
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("NEW-nvngx_dlss.dll", T("nvngx_dlss.dll"));
+        Assert.False(InstallManifest.Load(_target)!.Dlss);
+
+        SeedDlss("v310.10.0", "NEWER");
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("NEWER-nvngx_dlss.dll", T("nvngx_dlss.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task ReplaceOff_LeavesGameDlssAlone()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Opti = true, AddMissingDlss = true, Proxy = "dxgi.dll" }, null, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.False(File.Exists(Path.Combine(_target, "nvngx_dlss.dll")));  // game ships SR elsewhere
+    }
 }

@@ -250,7 +250,7 @@ public sealed partial class GameViewModel : ObservableObject
         Set("reshade", m?.ReShade ?? _s.Settings.InstallReShade);
         Set("mfg", m?.Mfg ?? _s.Settings.InstallMfgUnlock);
         Set("dlssnr", m?.DlssNr ?? _s.Settings.InstallDlssNr);
-        Set("dlss", m?.Dlss ?? true);
+        Set("dlss", m?.Dlss ?? HasDlss); // nothing to replace in games that don't ship DLSS
         Set("streamline", m?.Streamline ?? (_s.Settings.InstallStreamline && HasStreamline));
         _loading = false;
         RefreshStatus();
@@ -372,7 +372,7 @@ public sealed partial class GameViewModel : ObservableObject
         Mfg = m.Mfg,
         DlssNr = m.DlssNr,
         Dlss = m.Dlss,
-        AddMissingDlss = false,
+        AddMissingDlss = m.Opti && m.Files.Any(f => Path.GetFileName(f).Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)),
         DlssTag = EffectiveDlssTag,
         Streamline = m.Streamline && HasStreamline,
         ReShadeOverrides = ReShadeProfile,

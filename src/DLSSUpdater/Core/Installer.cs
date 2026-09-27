@@ -12,6 +12,7 @@ public sealed class InstallOptions
     public bool Mfg { get; init; }
     public bool DlssNr { get; init; }
     public bool Dlss { get; init; }
+    /// <summary>Put nvngx_dlss.dll next to OptiScaler when the game has none (independent of <see cref="Dlss"/>).</summary>
     public bool AddMissingDlss { get; init; }
     /// <summary>DLSS release to install; null = latest (never downgrades a newer game DLL).</summary>
     public string? DlssTag { get; init; }
@@ -69,7 +70,8 @@ public sealed class Installer(ComponentStore store)
         // Fetch everything first so a network failure never leaves a half-installed game.
         var pkg = o.Opti ? await store.EnsureOptiAsync(progress, ct) : null;
         var mfg = o.Mfg ? await store.EnsureMfgAsync(progress, ct) : null;
-        var dlss = o.Dlss ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
+        var addMissing = o.AddMissingDlss && o.Opti;
+        var dlss = o.Dlss || addMissing ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
         var sl = o.Streamline && game.Streamline.Count > 0 ? await store.EnsureStreamlineAsync(progress, ct) : null;
         if (o.Streamline && game.Streamline.Count == 0) Log.Info($"{game.Name}: no Streamline files in this game, skipped");
         if (o.DlssNr && !File.Exists(store.DlssNrPath))
@@ -114,10 +116,13 @@ public sealed class Installer(ComponentStore store)
                 }
                 if (dlss is not null)
                 {
-                    SwapDlss(ctx, dlss, o.AddMissingDlss, exact: o.DlssTag is not null);
-                    m.Dlss = true;
-                    m.DlssTag = store.DlssFor(o.DlssTag)?.Tag;
-                    m.DlssPinned = o.DlssTag is not null;
+                    SwapDlss(ctx, dlss, replace: o.Dlss, addMissing, exact: o.DlssTag is not null);
+                    if (o.Dlss)
+                    {
+                        m.Dlss = true;
+                        m.DlssTag = store.DlssFor(o.DlssTag)?.Tag;
+                        m.DlssPinned = o.DlssTag is not null;
+                    }
                 }
                 if (sl is not null)
                 {
@@ -258,13 +263,17 @@ public sealed class Installer(ComponentStore store)
         }
     }
 
-    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool addMissing, bool exact = false)
+    /// <summary>
+    /// <paramref name="replace"/>: update every DLSS dll the game has. <paramref name="addMissing"/>: give OptiScaler an
+    /// nvngx_dlss.dll when the game ships none (or only the one we added earlier, which is then kept current).
+    /// </summary>
+    private static void SwapDlss(Ctx ctx, IReadOnlyDictionary<string, string> latest, bool replace, bool addMissing, bool exact = false)
     {
         var m = ctx.M;
         var scan = new GameInfo { Root = ctx.Root };
         GameInspector.Inspect(scan);
 
-        foreach (var dll in scan.Dlss)
+        foreach (var dll in replace ? scan.Dlss : [])
         {
             if (FileUtil.IsUnder(dll.Path, InstallManifest.DirFor(ctx.Target))) continue;
             if (!latest.TryGetValue(dll.Name, out var src)) continue;
@@ -282,11 +291,14 @@ public sealed class Installer(ComponentStore store)
             Log.Info($"  {rel}: {FileUtil.Format(dll.Version)} → {FileUtil.Format(newVer)}");
         }
 
-        if (addMissing && latest.ContainsKey("nvngx_dlss.dll") && !scan.Dlss.Any(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)))
+        var sr = scan.Dlss.Where(d => d.Name.Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (addMissing && latest.TryGetValue("nvngx_dlss.dll", out var srSrc) && sr.All(d => m.Owns(ctx.Rel(d.Path))))
         {
             var dest = Path.Combine(ctx.Target, "nvngx_dlss.dll");
-            Place(ctx, latest["nvngx_dlss.dll"], dest);
-            Log.Info($"  added {ctx.Rel(dest)}");
+            var had = File.Exists(dest);
+            if (had && FileUtil.SameFile(srSrc, dest)) return;
+            Place(ctx, srSrc, dest);
+            Log.Info($"  {(had ? "updated" : "added")} {ctx.Rel(dest)}");
         }
     }
 
