@@ -79,7 +79,7 @@ dotnet publish src/DLSSUpdater -c Release -o publish
 Produces a single self-contained `publish\DLSSUpdater.exe` (.NET 8, WPF), the portable build. The installer wraps it with [Inno Setup](https://jrsoftware.org/isinfo.php):
 
 ```
-iscc /DAppVersion=1.5.0 installer\DLSSUpdater.iss
+iscc /DAppVersion=1.5.1 installer\DLSSUpdater.iss
 ```
 
 Tagging `v*` (matching `<Version>` in the csproj) builds both on GitHub Actions and attaches them to a release.

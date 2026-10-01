@@ -1,5 +1,5 @@
 ; Inno Setup script for the installable DLSS Updater. Build after `dotnet publish`:
-;   iscc /DAppVersion=1.5.0 installer\DLSSUpdater.iss
+;   iscc /DAppVersion=1.5.1 installer\DLSSUpdater.iss
 ; The portable build is the same single-file publish\DLSSUpdater.exe, released as is.
 
 #ifndef AppVersion
