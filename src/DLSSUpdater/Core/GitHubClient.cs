@@ -12,6 +12,7 @@ public sealed class GhRelease
     [JsonPropertyName("prerelease")] public bool Prerelease { get; set; }
     [JsonPropertyName("draft")] public bool Draft { get; set; }
     [JsonPropertyName("published_at")] public DateTime? PublishedAt { get; set; }
+    [JsonPropertyName("body")] public string? Body { get; set; }
     [JsonPropertyName("assets")] public List<GhAsset> Assets { get; set; } = [];
 }
 
