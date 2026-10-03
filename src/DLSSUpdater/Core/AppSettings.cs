@@ -61,6 +61,8 @@ public sealed class AppSettings
     public List<ConfigPreset> Presets { get; set; } = [];
     /// <summary>Component -> newest release tag whose notes the user has seen (or that was current when first checked).</summary>
     public Dictionary<string, string> SeenReleases { get; set; } = [];
+    /// <summary>Component -> newest release tag already announced in the log.</summary>
+    public Dictionary<string, string> AnnouncedReleases { get; set; } = [];
 
     /// <summary>Built-in presets first, then the user's.</summary>
     [JsonIgnore]

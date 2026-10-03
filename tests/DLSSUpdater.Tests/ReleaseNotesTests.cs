@@ -87,6 +87,69 @@ public class ReleaseNotesTests
         Assert.True(ReleaseNotes.Summarize(notes, "v2.12.0").IsEmpty);
 
     [Fact]
+    public void Summarize_VersionOnlyHeading_DoesNotHideAnnouncementOrNextHeading()
+    {
+        Assert.True(ReleaseNotes.Summarize("# v2.12.0\n\nNVIDIA Streamline SDK 2.12.0 is now available for all developers.", "v2.12.0").IsEmpty);
+
+        var s = ReleaseNotes.Summarize("# v2.12.0\n\n## Faster frame generation\n\n- Lower latency", "v2.12.0");
+        Assert.Equal("Faster frame generation", s.Headline);
+        Assert.Equal(["Lower latency"], s.Points);
+    }
+
+    [Fact]
+    public void Summarize_WrappedBullet_StaysOnePoint_NestedDetailStaysOut()
+    {
+        const string notes = "- Adds X which\n  improves Y\n  - internal detail\n- Second\n\n  More about the second point.\n- Third";
+
+        var s = ReleaseNotes.Summarize(notes, "v1.0.0");
+
+        Assert.Equal(["Adds X which improves Y", "Second", "Third"], s.Points);
+    }
+
+    [Fact]
+    public void Summarize_LongPoint_IsNotCutInsideAVersionNumber()
+    {
+        const string point = "Frame generation works with the newest drivers and with games that ship their own interposer, " +
+                             "now built against DLSS v310.9.1 and Streamline 2.12.0 with a few more words after them";
+
+        var s = ReleaseNotes.Summarize("- " + point, "v1.0.0");
+
+        Assert.Equal(point[..point.LastIndexOf(' ', 159)] + "…", s.Points[0]);
+    }
+
+    [Fact]
+    public void Summarize_LongPoint_EndsOnASentenceWhenThereIsOne()
+    {
+        var point = "Fixed a crash on startup with HDR enabled on multi-monitor setups using different refresh rates. " +
+                    "Also improved the handling of very long shader compilation times on first launch of some games";
+
+        var s = ReleaseNotes.Summarize("- " + point, "v1.0.0");
+
+        Assert.Equal("Fixed a crash on startup with HDR enabled on multi-monitor setups using different refresh rates.", s.Points[0]);
+    }
+
+    [Fact]
+    public void IsUnseen_SameNumberWithAnotherTag_IsNew()
+    {
+        var seen = new Dictionary<string, string> { ["OptiScaler"] = "v0.9.0-pre2" };
+
+        Assert.True(ReleaseNotes.IsUnseen(seen, Component.OptiScaler, "v0.9.0"));
+        Assert.True(ReleaseNotes.IsUnseen(seen, Component.OptiScaler, "v0.9.0-pre3"));
+        Assert.False(ReleaseNotes.IsUnseen(seen, Component.OptiScaler, "v0.8.91"));
+    }
+
+    [Fact]
+    public void Announce_OncePerRelease()
+    {
+        var announced = new Dictionary<string, string>();
+
+        Assert.True(ReleaseNotes.Announce(announced, Component.Dlss, "v310.9.1"));
+        Assert.False(ReleaseNotes.Announce(announced, Component.Dlss, "v310.9.1"));
+        Assert.True(ReleaseNotes.Announce(announced, Component.Streamline, "v2.12.0"));
+        Assert.True(ReleaseNotes.Announce(announced, Component.Dlss, "v310.10.0"));
+    }
+
+    [Fact]
     public void IsUnseen_FirstSightingIsRecordedNotFlagged()
     {
         var seen = new Dictionary<string, string>();

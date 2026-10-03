@@ -117,18 +117,38 @@ public sealed partial class ComponentStore
         if (DlssReleases.Count == 0 && Dlss is not null) DlssReleases = [Dlss];
     }
 
-    private static async Task Resolve(Component c, Func<CancellationToken, Task<ReleaseInfo?>> resolve, Action<ReleaseInfo?> set, CancellationToken ct)
+    private async Task Resolve(Component c, Func<CancellationToken, Task<ReleaseInfo?>> resolve, Action<ReleaseInfo?> set, CancellationToken ct)
     {
         try
         {
-            set(await resolve(ct) ?? NewestCached(c));
+            set(await resolve(ct) ?? Offline(c));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
         {
-            var cached = NewestCached(c);
+            var cached = Offline(c);
             Log.Info($"{c}: GitHub unreachable ({ex.Message}){(cached is null ? "" : $", using cached {cached.Tag}")}");
             set(cached);
         }
+    }
+
+    /// <summary>The newest downloaded release, with its notes from the API cache when GitHub had them.</summary>
+    private ReleaseInfo? Offline(Component c)
+    {
+        if (NewestCached(c) is not { } cached) return null;
+        var repo = c switch
+        {
+            Component.OptiScaler => OptiRepo,
+            Component.MfgUnlock => MfgRepo,
+            Component.Dlss => DlssRepo,
+            Component.Streamline => StreamlineRepo,
+            _ => null,
+        };
+        var notes = repo is null ? null
+            : _gh.CachedReleases(repo).FirstOrDefault(r => string.Equals(r.TagName, cached.Tag, StringComparison.OrdinalIgnoreCase))?.Body;
+        return notes is null ? cached : new ReleaseInfo
+        {
+            Tag = cached.Tag, Prerelease = cached.Prerelease, Published = cached.Published, FromCache = true, Notes = notes,
+        };
     }
 
     private bool Accept(GhRelease r) => !r.Draft && (!r.Prerelease || _includePrereleases());

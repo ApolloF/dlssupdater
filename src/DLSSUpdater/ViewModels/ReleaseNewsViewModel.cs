@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -26,7 +25,6 @@ public sealed partial class ReleaseNewsViewModel(Component component, string nam
 
     public void Load(ReleaseInfo? r)
     {
-        var previous = Tag;
         Tag = r?.Tag;
         if (r is null)
         {
@@ -42,14 +40,17 @@ public sealed partial class ReleaseNewsViewModel(Component component, string nam
             r.Published?.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture),
         }.OfType<string>());
 
+        // Offline the newest downloaded release stands in; it can be older than what was seen online.
         var seen = settings.SeenReleases.Count;
-        IsNew = ReleaseNotes.IsUnseen(settings.SeenReleases, component, r.Tag);
-        if (settings.SeenReleases.Count != seen) settings.Save();
-        if (IsNew && previous != r.Tag)
+        IsNew = !r.FromCache && ReleaseNotes.IsUnseen(settings.SeenReleases, component, r.Tag);
+        var changed = settings.SeenReleases.Count != seen;
+        if (IsNew && ReleaseNotes.Announce(settings.AnnouncedReleases, component, r.Tag))
         {
+            changed = true;
             var what = Summary.Headline ?? Summary.Points.FirstOrDefault();
             Log.Info($"New {Name} {r.Tag}{(what is null ? "" : ": " + what)} (click its version for what's new)");
         }
+        if (changed) settings.Save();
     }
 
     /// <summary>Closing the popup counts as having read it.</summary>
@@ -64,7 +65,7 @@ public sealed partial class ReleaseNewsViewModel(Component component, string nam
     [RelayCommand]
     private void OpenNotes()
     {
-        if (Url is not null) Process.Start(new ProcessStartInfo(Url) { UseShellExecute = true });
+        if (Url is not null) MainViewModel.OpenUrl(Url);
         IsOpen = false;
     }
 }

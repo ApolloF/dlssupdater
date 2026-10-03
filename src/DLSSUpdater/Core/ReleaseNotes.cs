@@ -30,6 +30,9 @@ public static partial class ReleaseNotes
         var paragraphDone = false;
         var inCode = false;
         int? listIndent = null;
+        // The previous line was a bullet (or its wrapped text), and whether that bullet is a top-level point.
+        var inBullet = false;
+        var topLevel = false;
 
         foreach (var raw in markdown.Replace("\r", "").Split('\n'))
         {
@@ -43,13 +46,16 @@ public static partial class ReleaseNotes
 
             if (Heading().Match(line) is { Success: true } h)
             {
-                headline ??= StripVersion(Inline(h.Groups[1].Value), tag);
+                // A heading that only repeats the version leaves room for the next one.
+                headline ??= NullIfEmpty(StripVersion(Inline(h.Groups[1].Value), tag));
                 listIndent = null;
+                inBullet = false;
                 if (paragraph.Count > 0) paragraphDone = true;
                 continue;
             }
             if (line.Length == 0 || HorizontalRule().IsMatch(line))
             {
+                inBullet = false;
                 if (paragraph.Count > 0) paragraphDone = true;
                 continue;
             }
@@ -58,9 +64,19 @@ public static partial class ReleaseNotes
                 // Top-level points only; nested ones are detail. Some notes indent the whole list.
                 var indent = b.Groups[1].Value.Replace("\t", "    ").Length;
                 listIndent ??= indent;
-                if (indent <= listIndent) bullets.Add(Inline(b.Groups[2].Value));
+                topLevel = indent <= listIndent;
+                if (topLevel) bullets.Add(Inline(b.Groups[2].Value));
+                inBullet = true;
                 continue;
             }
+            if (inBullet)
+            {
+                // Wrapped text of the bullet above.
+                if (topLevel) bullets[^1] += " " + Inline(line);
+                continue;
+            }
+            // An indented paragraph inside a list item belongs to that item.
+            if (listIndent is not null && raw.Length - raw.TrimStart().Length > listIndent) continue;
             listIndent = null;
             if (!paragraphDone) paragraph.Add(Inline(line));
         }
@@ -89,10 +105,20 @@ public static partial class ReleaseNotes
             return false;
         }
         if (string.Equals(last, tag, StringComparison.OrdinalIgnoreCase)) return false;
-        return FileUtil.ParseTag(tag) is not { } now || FileUtil.ParseTag(last) is not { } before || now > before;
+        // Same number with another tag is news too: "v0.9.0-pre2" -> "v0.9.0", or "-pre1" -> "-pre2".
+        return FileUtil.ParseTag(tag) is not { } now || FileUtil.ParseTag(last) is not { } before || now >= before;
     }
 
     public static void MarkSeen(IDictionary<string, string> seen, Component c, string tag) => seen[c.ToString()] = tag;
+
+    /// <summary>True the first time <paramref name="tag"/> of <paramref name="c"/> is announced, so a release is logged once and not on every start.</summary>
+    public static bool Announce(IDictionary<string, string> announced, Component c, string tag)
+    {
+        var key = c.ToString();
+        if (announced.TryGetValue(key, out var last) && string.Equals(last, tag, StringComparison.OrdinalIgnoreCase)) return false;
+        announced[key] = tag;
+        return true;
+    }
 
     /// <summary>Where the full notes of a release live.</summary>
     public static string Url(Component c, string tag) => c switch
@@ -130,9 +156,10 @@ public static partial class ReleaseNotes
     private static string Shorten(string s, int max)
     {
         if (s.Length <= max) return s;
+        // End on a full sentence when one ends late enough; a dot inside "v310.9.1" doesn't end one.
+        for (var i = max - 1; i >= max / 2; i--)
+            if (s[i] is '.' or '!' or '?' && char.IsWhiteSpace(s[i + 1])) return s[..(i + 1)];
         var cut = s[..max];
-        var sentence = cut.LastIndexOfAny(['.', '!', '?']);
-        if (sentence >= max / 2) return cut[..(sentence + 1)];
         var space = cut.LastIndexOf(' ');
         return (space > max / 2 ? cut[..space] : cut).TrimEnd(',', ';', ':', ' ') + "…";
     }

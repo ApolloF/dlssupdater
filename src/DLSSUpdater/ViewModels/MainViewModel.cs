@@ -396,10 +396,11 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private static void OpenUrl(string url)
+    internal static void OpenUrl(string url)
     {
-        if (url.StartsWith("https://", StringComparison.Ordinal))
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        if (!url.StartsWith("https://", StringComparison.Ordinal)) return;
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Win32Exception ex) { Log.Error($"Could not open {url}", ex); }
     }
 
     [RelayCommand]
