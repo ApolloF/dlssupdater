@@ -1,10 +1,10 @@
-﻿using System.Collections.Specialized;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DLSSUpdater.ViewModels;
+using DLSSUpdater.Views;
 
 namespace DLSSUpdater;
 
@@ -35,11 +35,7 @@ public partial class MainWindow : Window
                 Dispatcher.BeginInvoke(() => ScrollToGuide(id), System.Windows.Threading.DispatcherPriority.Loaded);
         };
         SourceInitialized += (_, _) => RoundCorners();
-        // Deferred: scrolling inside the change notification forces item generation before the ListBox has processed the change.
-        ((INotifyCollectionChanged)_vm.LogLines).CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() =>
-        {
-            if (LogList.Items.Count > 0) LogList.ScrollIntoView(LogList.Items[^1]);
-        }, System.Windows.Threading.DispatcherPriority.Background);
+        ListAutoScroll.FollowNewest(LogList, _vm.LogLines);
     }
 
     /// <summary>While a keybind button is waiting, the next key press becomes the binding.</summary>

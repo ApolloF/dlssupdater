@@ -36,8 +36,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         Log.Line += line => _ui.BeginInvoke(() =>
         {
-            LogLines.Add(line);
-            if (LogLines.Count > 400) LogLines.RemoveAt(0);
+            AppendLogLine(LogLines, line);
             LastLog = line;
         });
     }
@@ -48,6 +47,15 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<GameViewModel> Games { get; } = [];
     public ICollectionView GamesView { get; }
     public ObservableCollection<string> LogLines { get; } = [];
+
+    internal const int MaxLogLines = 400;
+
+    /// <summary>Adds a log line and drops the oldest ones beyond <see cref="MaxLogLines"/>.</summary>
+    internal static void AppendLogLine(IList<string> lines, string line)
+    {
+        lines.Add(line);
+        while (lines.Count > MaxLogLines) lines.RemoveAt(0);
+    }
 
     [ObservableProperty] private GameViewModel? _selectedGame;
     [ObservableProperty] private string _search = "";
