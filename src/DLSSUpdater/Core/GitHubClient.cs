@@ -12,6 +12,7 @@ public sealed class GhRelease
     [JsonPropertyName("prerelease")] public bool Prerelease { get; set; }
     [JsonPropertyName("draft")] public bool Draft { get; set; }
     [JsonPropertyName("published_at")] public DateTime? PublishedAt { get; set; }
+    [JsonPropertyName("body")] public string? Body { get; set; }
     [JsonPropertyName("assets")] public List<GhAsset> Assets { get; set; } = [];
 }
 
@@ -61,6 +62,23 @@ public sealed class GitHubClient
     {
         var body = await GetApiAsync($"https://api.github.com/repos/{repo}/releases?per_page={perPage}", ct);
         return JsonSerializer.Deserialize(body, JsonCtx.Default.ListGhRelease) ?? [];
+    }
+
+    /// <summary>Releases of <paramref name="repo"/> from the ETag cache only (no request), for when GitHub can't be reached.</summary>
+    public List<GhRelease> CachedReleases(string repo)
+    {
+        var prefix = $"https://api.github.com/repos/{repo}/releases?";
+        var cache = LoadCache();
+        List<string> bodies;
+        lock (_cacheGate)
+            bodies = cache.Where(e => e.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(e => e.Value.Body).ToList();
+        var releases = new List<GhRelease>();
+        foreach (var body in bodies)
+        {
+            try { releases.AddRange(JsonSerializer.Deserialize(body, JsonCtx.Default.ListGhRelease) ?? []); }
+            catch (JsonException) { }
+        }
+        return releases;
     }
 
     public async Task<List<string>> GetTagsAsync(string repo, int perPage, CancellationToken ct)

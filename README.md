@@ -45,6 +45,8 @@ Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, f
 
 **NVIDIA profile** (per game only; the global driver profile is read, never written): DLSS SR / RR / FG preset overrides, DLSS render resolution, multi frame generation count, Smooth Motion, RTX HDR, RTX Dynamic Vibrance, FPS limiter, VSync and power mode, written straight to the driver profile via NvAPI like NVIDIA Profile Inspector. Nothing is loaded until the tab is opened. The scan detects which DLSS features a game ships (SR, RR, FG, Reflex, from `nvngx_*` and Streamline `sl.*` files); the tab lists them, moves presets for missing features into a collapsed group, and suggests Smooth Motion for games without FG. The game list shows RR / FG / Reflex badges.
 
+**What's new**: when a component has a newer release than the last one you looked at, its version in the header gets a green dot. Click any version for a short summary of that release (headline and first points of its notes) and a link to the full release notes; closing it clears the dot. Nothing is flagged on the first check, only releases that arrive later.
+
 **Update all** re-applies everything to each managed game after a new release or after a game patch reverts the DLLs.
 
 Games are discovered from Steam, Epic, GOG, EA, Ubisoft and `XboxGames` folders. Standalone games can be added one by one or as a library folder whose subfolders are games.
