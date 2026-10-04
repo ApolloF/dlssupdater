@@ -38,20 +38,25 @@ public readonly record struct TransferProgress(string Text, double? Fraction);
 /// <summary>Minimal GitHub REST client with ETag caching (304s don't count against the rate limit).</summary>
 public sealed class GitHubClient
 {
-    private static readonly HttpClient Http = CreateHttp();
+    private static readonly HttpClient SharedHttp = CreateHttp(new SocketsHttpHandler
+    {
+        AutomaticDecompression = DecompressionMethods.All,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        ConnectTimeout = TimeSpan.FromSeconds(15),
+    });
+    private readonly HttpClient _http;
     private readonly object _cacheGate = new();
     private Dictionary<string, ApiCacheEntry>? _cache;
 
+    public GitHubClient() => _http = SharedHttp;
+
+    /// <summary>For tests: every request goes to <paramref name="handler"/>.</summary>
+    internal GitHubClient(HttpMessageHandler handler) => _http = CreateHttp(handler);
+
     public string? Token { get; set; }
 
-    private static HttpClient CreateHttp()
+    private static HttpClient CreateHttp(HttpMessageHandler handler)
     {
-        var handler = new SocketsHttpHandler
-        {
-            AutomaticDecompression = DecompressionMethods.All,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
-            ConnectTimeout = TimeSpan.FromSeconds(15),
-        };
         var http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("DLSSUpdater", "1.0"));
         return http;
@@ -78,7 +83,7 @@ public sealed class GitHubClient
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
-        using var res = await Http.GetAsync(url, cts.Token);
+        using var res = await _http.GetAsync(url, cts.Token);
         res.EnsureSuccessStatusCode();
         return await res.Content.ReadAsStringAsync(cts.Token);
     }
@@ -97,7 +102,7 @@ public sealed class GitHubClient
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
-        using var res = await Http.SendAsync(req, cts.Token);
+        using var res = await _http.SendAsync(req, cts.Token);
 
         if (res.StatusCode == HttpStatusCode.NotModified && cached is not null) return cached.Body;
         if (res.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests && cached is not null)
@@ -123,7 +128,7 @@ public sealed class GitHubClient
     {
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         var tmp = dest + ".part";
-        using (var res = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
+        using (var res = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
         {
             res.EnsureSuccessStatusCode();
             var total = res.Content.Headers.ContentLength;
@@ -149,11 +154,14 @@ public sealed class GitHubClient
         File.Move(tmp, dest, true);
     }
 
-    public static async Task<bool> ExistsAsync(string url, CancellationToken ct)
+    /// <summary>True when the file is there, false only on a 404; anything else (rate limit, server error) throws.</summary>
+    public async Task<bool> ExistsAsync(string url, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Head, url);
-        using var res = await Http.SendAsync(req, ct);
-        return res.IsSuccessStatusCode;
+        using var res = await _http.SendAsync(req, ct);
+        if (res.StatusCode == HttpStatusCode.NotFound) return false;
+        res.EnsureSuccessStatusCode();
+        return true;
     }
 
     private Dictionary<string, ApiCacheEntry> LoadCache()
