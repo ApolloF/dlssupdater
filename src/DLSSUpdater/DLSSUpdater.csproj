@@ -13,6 +13,7 @@
     <Version>1.5.1</Version>
     <Product>DLSS Updater</Product>
     <Company>ApolloF</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <TieredPGO>true</TieredPGO>
