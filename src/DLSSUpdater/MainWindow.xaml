@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:DLSSUpdater.ViewModels"
         xmlns:core="clr-namespace:DLSSUpdater.Core"
+        xmlns:v="clr-namespace:DLSSUpdater.Views"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="DLSS Updater" Width="1240" Height="800" MinWidth="980" MinHeight="600"
         WindowStartupLocation="CenterScreen" Icon="Assets/icon.ico"
@@ -28,6 +29,110 @@
         </Style>
         <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource Caps}">
             <Setter Property="Margin" Value="0,28,0,10" />
+        </Style>
+
+        <!-- What's new popover of a component chip -->
+        <DataTemplate x:Key="ReleaseCard" DataType="{x:Type vm:ReleaseNewsViewModel}">
+            <Border Width="380" Background="{StaticResource Surface2}" BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
+                    CornerRadius="4" Padding="18,14,18,8" Margin="0,0,14,14">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Opacity="0.45" Color="Black" />
+                </Border.Effect>
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Text="WHAT'S NEW" Style="{StaticResource Caps}" VerticalAlignment="Center" />
+                        <Border Style="{StaticResource Badge}" BorderBrush="{StaticResource Accent}" Background="{StaticResource AccentSoft}"
+                                HorizontalAlignment="Right" Margin="0" Visibility="{Binding IsNew, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="NEW" Style="{StaticResource BadgeText}" Foreground="{StaticResource Accent}" />
+                        </Border>
+                    </Grid>
+                    <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
+                        <Run Text="{Binding Name, Mode=OneWay}" FontFamily="{StaticResource DisplayFont}" FontSize="16" FontWeight="SemiBold" />
+                        <Run Text="{Binding Tag, Mode=OneWay}" FontFamily="{StaticResource DisplayFont}" FontSize="16" Foreground="{StaticResource Accent}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding Meta}" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,2,0,0"
+                               Visibility="{Binding Meta, Converter={StaticResource NullToVis}}" />
+
+                    <TextBlock Text="{Binding Summary.Headline}" FontWeight="SemiBold" TextWrapping="Wrap" LineHeight="19" Margin="0,12,0,0"
+                               Visibility="{Binding Summary.Headline, Converter={StaticResource NullToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Summary.Points}" Margin="0,8,0,0" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="14" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="4" Height="4" Background="{StaticResource Accent}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,8,0,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" Foreground="{StaticResource Text}" FontSize="12.5" TextWrapping="Wrap" LineHeight="19" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="More in the full release notes." Style="{StaticResource MutedText}" FontSize="12"
+                               Visibility="{Binding Summary.More, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="No summary for this release, the full notes have the details." Style="{StaticResource MutedText}" FontSize="12.5"
+                               TextWrapping="Wrap" Margin="0,4,0,0" Visibility="{Binding Summary.IsEmpty, Converter={StaticResource BoolToVis}}" />
+
+                    <Border Style="{StaticResource Divider}" Margin="0,12,0,4" />
+                    <Button Style="{StaticResource BtnGhost}" Foreground="{StaticResource Accent}" HorizontalAlignment="Left" Padding="0,6"
+                            Command="{Binding OpenNotesCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Full release notes" />
+                            <TextBlock Text="&#xE8A7;" Style="{StaticResource Icon}" FontSize="11" Margin="8,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Component chip that opens its what's new popover; Tag is the chip's ReleaseNewsViewModel -->
+        <Style x:Key="ReleaseChip" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="-8,-4,20,-4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="IsEnabled" Value="{Binding Tag.Available, RelativeSource={RelativeSource Self}}" />
+            <Setter Property="IsChecked" Value="{Binding Tag.IsOpen, RelativeSource={RelativeSource Self}, Mode=TwoWay}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Tag.Name, RelativeSource={RelativeSource Self}, StringFormat='Release notes for {0}'}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                    CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter />
+                            </Border>
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,-2,0"
+                                     Visibility="{Binding Tag.IsNew, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BoolToVis}}" />
+                            <Popup x:Name="Pop" PlacementTarget="{Binding ElementName=Bd}" Placement="Bottom" VerticalOffset="6" StaysOpen="False"
+                                   AllowsTransparency="True" PopupAnimation="Fade" Focusable="False" v:PopupKeyboard.Enabled="True"
+                                   IsOpen="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ContentControl Content="{TemplateBinding Tag}" ContentTemplate="{StaticResource ReleaseCard}" Focusable="False"
+                                                KeyboardNavigation.TabNavigation="Cycle" />
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <!-- A click on the chip while open only closes the popup instead of reopening it -->
+                            <Trigger SourceName="Pop" Property="IsOpen" Value="True">
+                                <Setter Property="IsHitTestVisible" Value="False" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <DataTemplate x:Key="KeybindRow" DataType="{x:Type vm:KeybindViewModel}">
@@ -204,30 +309,38 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal">
-                    <StackPanel Margin="0,0,28,0">
-                        <TextBlock Text="OPTISCALER-NR" Style="{StaticResource Caps}" />
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding OptiVersion}" Style="{StaticResource ChipValue}" />
-                            <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Warn}" FontSize="14" Margin="8,3,0,0"
-                                       Background="Transparent" ToolTip="{Binding Compat.Summary}" ToolTipService.InitialShowDelay="100"
-                                       Visibility="{Binding CompatWarning, Converter={StaticResource BoolToVis}}" />
+                    <ToggleButton Style="{StaticResource ReleaseChip}" Tag="{Binding OptiNews}">
+                        <StackPanel>
+                            <TextBlock Text="OPTISCALER-NR" Style="{StaticResource Caps}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding OptiVersion}" Style="{StaticResource ChipValue}" />
+                                <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Warn}" FontSize="14" Margin="8,3,0,0"
+                                           Background="Transparent" ToolTip="{Binding Compat.Summary}" ToolTipService.InitialShowDelay="100" ToolTipService.ShowOnDisabled="True"
+                                           Visibility="{Binding CompatWarning, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
+                    </ToggleButton>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
-                    <StackPanel Margin="0,0,28,0">
-                        <TextBlock Text="DLSS" Style="{StaticResource Caps}" />
-                        <TextBlock Text="{Binding DlssVersion}" Style="{StaticResource ChipValue}" />
-                    </StackPanel>
+                    <ToggleButton Style="{StaticResource ReleaseChip}" Tag="{Binding DlssNews}">
+                        <StackPanel>
+                            <TextBlock Text="DLSS" Style="{StaticResource Caps}" />
+                            <TextBlock Text="{Binding DlssVersion}" Style="{StaticResource ChipValue}" />
+                        </StackPanel>
+                    </ToggleButton>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
-                    <StackPanel Margin="0,0,28,0">
-                        <TextBlock Text="MFG UNLOCK" Style="{StaticResource Caps}" />
-                        <TextBlock Text="{Binding MfgVersion}" Style="{StaticResource ChipValue}" />
-                    </StackPanel>
+                    <ToggleButton Style="{StaticResource ReleaseChip}" Tag="{Binding MfgNews}">
+                        <StackPanel>
+                            <TextBlock Text="MFG UNLOCK" Style="{StaticResource Caps}" />
+                            <TextBlock Text="{Binding MfgVersion}" Style="{StaticResource ChipValue}" />
+                        </StackPanel>
+                    </ToggleButton>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
-                    <StackPanel Margin="0,0,28,0">
-                        <TextBlock Text="STREAMLINE" Style="{StaticResource Caps}" />
-                        <TextBlock Text="{Binding StreamlineVersion}" Style="{StaticResource ChipValue}" />
-                    </StackPanel>
+                    <ToggleButton Style="{StaticResource ReleaseChip}" Tag="{Binding StreamlineNews}">
+                        <StackPanel>
+                            <TextBlock Text="STREAMLINE" Style="{StaticResource Caps}" />
+                            <TextBlock Text="{Binding StreamlineVersion}" Style="{StaticResource ChipValue}" />
+                        </StackPanel>
+                    </ToggleButton>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
                     <StackPanel Margin="0,0,28,0">
                         <TextBlock Text="DLSSNR" Style="{StaticResource Caps}" />
@@ -244,20 +357,22 @@
                         </TextBlock>
                     </StackPanel>
                     <Border Width="1" Background="{StaticResource Line}" Margin="0,2,28,2" />
-                    <StackPanel>
-                        <TextBlock Text="RESHADE" Style="{StaticResource Caps}" />
-                        <TextBlock Text="{Binding ReShadeText}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource ChipValue}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ReShadeOk}" Value="False">
-                                            <Setter Property="Foreground" Value="{StaticResource Danger}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
+                    <ToggleButton Style="{StaticResource ReleaseChip}" Tag="{Binding ReShadeNews}" Margin="-8,-4,-8,-4">
+                        <StackPanel>
+                            <TextBlock Text="RESHADE" Style="{StaticResource Caps}" />
+                            <TextBlock Text="{Binding ReShadeText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ChipValue}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ReShadeOk}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </ToggleButton>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

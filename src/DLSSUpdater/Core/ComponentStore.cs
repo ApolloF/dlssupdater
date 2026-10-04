@@ -12,6 +12,8 @@ public sealed class ReleaseInfo
     public bool Prerelease { get; init; }
     public DateTime? Published { get; init; }
     public bool FromCache { get; init; }
+    /// <summary>Release notes as published (markdown); null when offline or the source has none.</summary>
+    public string? Notes { get; init; }
     public List<(string Name, string Url, string? Sha256)> Files { get; init; } = [];
 
     public Version? Version => FileUtil.ParseTag(Tag);
@@ -115,18 +117,38 @@ public sealed partial class ComponentStore
         if (DlssReleases.Count == 0 && Dlss is not null) DlssReleases = [Dlss];
     }
 
-    private static async Task Resolve(Component c, Func<CancellationToken, Task<ReleaseInfo?>> resolve, Action<ReleaseInfo?> set, CancellationToken ct)
+    private async Task Resolve(Component c, Func<CancellationToken, Task<ReleaseInfo?>> resolve, Action<ReleaseInfo?> set, CancellationToken ct)
     {
         try
         {
-            set(await resolve(ct) ?? NewestCached(c));
+            set(await resolve(ct) ?? Offline(c));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
         {
-            var cached = NewestCached(c);
+            var cached = Offline(c);
             Log.Info($"{c}: GitHub unreachable ({ex.Message}){(cached is null ? "" : $", using cached {cached.Tag}")}");
             set(cached);
         }
+    }
+
+    /// <summary>The newest downloaded release, with its notes from the API cache when GitHub had them.</summary>
+    private ReleaseInfo? Offline(Component c)
+    {
+        if (NewestCached(c) is not { } cached) return null;
+        var repo = c switch
+        {
+            Component.OptiScaler => OptiRepo,
+            Component.MfgUnlock => MfgRepo,
+            Component.Dlss => DlssRepo,
+            Component.Streamline => StreamlineRepo,
+            _ => null,
+        };
+        var notes = repo is null ? null
+            : _gh.CachedReleases(repo).FirstOrDefault(r => string.Equals(r.TagName, cached.Tag, StringComparison.OrdinalIgnoreCase))?.Body;
+        return notes is null ? cached : new ReleaseInfo
+        {
+            Tag = cached.Tag, Prerelease = cached.Prerelease, Published = cached.Published, FromCache = true, Notes = notes,
+        };
     }
 
     private bool Accept(GhRelease r) => !r.Draft && (!r.Prerelease || _includePrereleases());
@@ -143,7 +165,7 @@ public sealed partial class ComponentStore
             if (zip is null) continue;
             return new ReleaseInfo
             {
-                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt,
+                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt, Notes = r.Body,
                 Files = [(zip.Name, zip.Url, zip.Sha256)],
             };
         }
@@ -159,7 +181,7 @@ public sealed partial class ComponentStore
             if (addon is null) continue;
             return new ReleaseInfo
             {
-                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt,
+                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt, Notes = r.Body,
                 Files = [(MfgFile, addon.Url, addon.Sha256)],
             };
         }
@@ -170,14 +192,14 @@ public sealed partial class ComponentStore
     {
         DlssReleases = (await _gh.GetReleasesAsync(DlssRepo, 40, ct))
             .Where(Accept)
-            .Select(r => DlssRelease(r.TagName, r.Prerelease, r.PublishedAt))
+            .Select(r => DlssRelease(r.TagName, r.Prerelease, r.PublishedAt, r.Body))
             .ToList();
         return DlssReleases.FirstOrDefault();
     }
 
-    private static ReleaseInfo DlssRelease(string tag, bool pre = false, DateTime? published = null) => new()
+    private static ReleaseInfo DlssRelease(string tag, bool pre = false, DateTime? published = null, string? notes = null) => new()
     {
-        Tag = tag, Prerelease = pre, Published = published,
+        Tag = tag, Prerelease = pre, Published = published, Notes = notes,
         Files = DlssFiles.Select(f => (f, DlssRawUrl(tag, f), (string?)null)).ToList(),
     };
 
@@ -197,7 +219,7 @@ public sealed partial class ComponentStore
             if (zip is null) continue;
             return new ReleaseInfo
             {
-                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt,
+                Tag = r.TagName, Prerelease = r.Prerelease, Published = r.PublishedAt, Notes = r.Body,
                 Files = [(zip.Name, zip.Url, zip.Sha256)],
             };
         }
