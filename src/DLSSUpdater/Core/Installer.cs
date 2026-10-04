@@ -18,6 +18,11 @@ public sealed class InstallOptions
     public bool ReShade { get; init; }
     public bool Mfg { get; init; }
     public bool DlssNr { get; init; }
+    /// <summary>
+    /// Unofficial components are off but the game already has a DLSSNR runtime: it is left in place and stays turned on
+    /// in OptiScaler.ini instead of being switched off by the update.
+    /// </summary>
+    public bool KeepDlssNr { get; init; }
     public bool Dlss { get; init; }
     /// <summary>Put nvngx_dlss.dll next to OptiScaler when the game has none (independent of <see cref="Dlss"/>).</summary>
     public bool AddMissingDlss { get; init; }
@@ -201,7 +206,7 @@ public sealed class Installer(ComponentStore store)
         var releaseIni = File.ReadAllText(Path.Combine(pkg, "OptiScaler.ini"));
         string? currentIni = File.Exists(iniPath) ? File.ReadAllText(iniPath) : null;
         if (currentIni is not null && !m.Owns(ctx.Rel(iniPath))) Backup(ctx, iniPath, "file", copy: true);
-        var profile = ConfigProfile.WithRequired(o.Overrides, o);
+        var profile = ConfigProfile.WithRequired(o.Overrides, o, keepDlssNr: o.KeepDlssNr && m.DlssNr);
         if (currentIni is not null && m.Owns(ctx.Rel(iniPath)) && m.OptiIni.Count == 0)
         {
             // Installs from 1.0.0 didn't record what they wrote; values still equal to the profile are ours.

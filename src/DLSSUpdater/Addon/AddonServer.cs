@@ -37,7 +37,7 @@ public sealed class AddonServer
         AppPaths.Ensure();
         var settings = AppSettings.Load();
         var gh = new GitHubClient { Token = settings.GitHubToken };
-        var store = new ComponentStore(gh, () => settings.IncludePrereleases);
+        var store = new ComponentStore(gh, () => settings.IncludePrereleases) { AllowUnofficial = () => settings.AllowUnofficial };
         return new Services { Settings = settings, Store = store, Installer = new Installer(store) };
     }
 

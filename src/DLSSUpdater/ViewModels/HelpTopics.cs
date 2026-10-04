@@ -16,8 +16,8 @@ public static class HelpTopics
     [
         // ---------- General ----------
         new("install-mode", "General", "Install mode",
-            "OptiScaler-NR (default) is the main use: OptiScaler is the proxy, loads ReShade and its add-ons, and runs DLSSNR. " +
-            "ReShade + add-ons installs ReShade itself as the proxy (dxgi.dll by default) with MFG Unlock, the DLSS and Streamline updates, and no OptiScaler or DLSSNR. " +
+            "OptiScaler-NR (default): OptiScaler is the proxy and loads ReShade and its add-ons (and DLSSNR, if unofficial components are on). " +
+            "ReShade + add-ons installs ReShade itself as the proxy (dxgi.dll by default) with its add-ons, the DLSS and Streamline updates, and no OptiScaler or DLSSNR. " +
             "Switching a game between the two removes the other mode's files and puts back what they replaced. Each game can use its own mode."),
         new("proxy", "General", "Proxy DLL name",
             "The file name OptiScaler is saved as so the game loads it. dxgi.dll works for most DX12 games. " +
@@ -45,8 +45,9 @@ public static class HelpTopics
             "[DlssNr] Enabled=true when the DLSSNR runtime is installed. '" + Core.ConfigProfile.RecommendedName + "' is a built-in preset with the tuned setup " +
             "(DLSS upscaler, preset override, Delete menu key, DLSSNR strengths and HDR tone mapping, ReShade tutorial skipped). Load it here or assign it to single games."),
         new("local-components", "General", "Local components",
-            "nvngx_dlssnr.dll (DLSS 5 neural rendering model, ShortFuse compat build for RTX 20–40) can't be downloaded automatically, so it is imported once " +
-            "and copied into each game. ReShade64.dll (add-on build) is taken from the official setup on reshade.me whenever a new version is out; an imported " +
+            "nvngx_dlssnr.dll (the DLSSNR neural rendering runtime) is not distributed by NVIDIA for this use and this app never downloads it. If you have it, " +
+            "import it once; it is copied into games only while unofficial components are on. The app checks for a valid NVIDIA signature and shows any other " +
+            "file as unverified. ReShade64.dll (add-on build) is taken from the official setup on reshade.me whenever a new version is out; an imported " +
             "ReShade64.dll replaces the download until you press Use download. Import a newer file here and Update all rolls it out."),
 
         // ---------- Keybinds ----------
@@ -138,8 +139,8 @@ public static class HelpTopics
         new("nv-fg-preset", "NVIDIA", "DLSS Frame Generation preset",
             "Which DLSS FG model the driver loads, together with the FG override switch. NVIDIA default is what the NVIDIA App calls 'Default'; A and B are the presets drivers currently offer."),
         new("nv-mfg", "NVIDIA", "Multi frame generation",
-            "Driver-side multiplier override for DLSS FG (the NVIDIA App's 'Multi Frame Generation' override). Native 3x/4x needs an RTX 50 card; " +
-            "on RTX 40 use MFG Unlock instead."),
+            "Driver-side multiplier override for DLSS FG (the NVIDIA App's 'Multi Frame Generation' override). Native 3x/4x needs an RTX 50 card. " +
+            "MFG Unlock can force it on RTX 40, but it is an unofficial patch (opt-in under Settings → General) and used at your own risk."),
         new("nv-smooth-motion", "NVIDIA", "Smooth Motion",
             "Driver-level frame generation that works in games without DLSS FG (DX11, DX12, Vulkan). Needs RTX 40/50 and driver 571.86+. " +
             "Don't combine with in-game FG."),
@@ -190,7 +191,7 @@ public static class HelpTopics
         ["add-missing"] = "Leave on. It only adds a file to games that have none, and Uninstall removes it again.",
         ["ini-mode"] = "Keep game settings for everyday use: updates never undo tuning you did in-game. Apply app settings once after you changed something here and want " +
                        "it everywhere, then switch back. Fresh config when a game's ini got messy or a new OptiScaler release changed a lot.",
-        ["local-components"] = "After downloading a new nvngx_dlssnr.dll, import it here and press Update all. Leave ReShade on the automatic download unless you need a specific build.",
+        ["local-components"] = "After importing a new nvngx_dlssnr.dll, press Update all. Leave ReShade on the automatic download unless you need a specific build.",
         ["keybinds"] = "Pick keys the game doesn't use: Delete, Insert, End, Page Up/Down and \\ are usually free. Avoid Home if you use ReShade's default overlay key.",
         ["skip-tutorial"] = "On, unless you are new to ReShade.",
         ["performance-mode"] = "Off while you set up effects, on for playing. With only add-ons (RenoDX, MFG Unlock) and no effects it makes no difference.",
@@ -229,7 +230,7 @@ public static class HelpTopics
         ["nv-sr-mode"] = "Use the game's setting. DLAA if you have headroom; Performance with an L/M preset at 4K looks close to Quality with older presets.",
         ["nv-rr-preset"] = "Use global or F. Try D only if F shows smearing in a specific game.",
         ["nv-fg-preset"] = "Use global or NVIDIA default. Try A or B only when a game shows FG artifacts that a different model fixes.",
-        ["nv-mfg"] = "Leave it to the game unless it only offers 2x; RTX 40 owners use MFG Unlock in the ReShade & MFG tab instead.",
+        ["nv-mfg"] = "Leave it to the game unless it only offers 2x. On RTX 40 there is no official 3x/4x; MFG Unlock is unofficial and opt-in.",
         ["nv-smooth-motion"] = "Per game, for titles without DLSS FG and a base frame rate above ~50 FPS.",
         ["nv-rtx-hdr"] = "Per game for SDR-only titles on an HDR monitor. Off for games with native HDR or a RenoDX HDR mod.",
         ["nv-vibrance"] = "Taste. Per game for dull-looking SDR games; off when using RTX HDR.",

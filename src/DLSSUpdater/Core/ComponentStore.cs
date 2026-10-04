@@ -41,13 +41,6 @@ public sealed partial class ComponentStore
     public const string MfgFile = "renodx-mfgunlock.addon64";
     public static readonly string[] DlssFiles = ["nvngx_dlss.dll", "nvngx_dlssd.dll", "nvngx_dlssg.dll"];
 
-    /// <summary>SHA-256 values published in the fork's INSTALL-DLSSNR.md.</summary>
-    public static readonly Dictionary<string, string> KnownDlssNr = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e"] = "NVIDIA original · RTX 50",
-        ["e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a"] = "ShortFuse compat · RTX 20–50",
-    };
-
     private readonly GitHubClient _gh;
     private readonly Func<bool> _includePrereleases;
     private readonly Dictionary<Component, SemaphoreSlim> _locks = new()
@@ -73,6 +66,8 @@ public sealed partial class ComponentStore
     public ReleaseInfo? ReShade { get; internal set; }
     /// <summary>Download ReShade automatically when none was imported.</summary>
     public Func<bool> AutoReShade { get; set; } = () => true;
+    /// <summary>The user opted in to unofficial components; otherwise MFG Unlock isn't even looked up.</summary>
+    public Func<bool> AllowUnofficial { get; set; } = () => true;
     /// <summary>Every DLSS SDK release, newest first, for pinning an older version.</summary>
     public IReadOnlyList<ReleaseInfo> DlssReleases { get; internal set; } = [];
 
@@ -106,9 +101,10 @@ public sealed partial class ComponentStore
 
     public async Task RefreshAsync(CancellationToken ct)
     {
+        if (!AllowUnofficial()) Mfg = null;
         await Task.WhenAll(
             Resolve(Component.OptiScaler, ResolveOptiAsync, v => Opti = v, ct),
-            Resolve(Component.MfgUnlock, ResolveMfgAsync, v => Mfg = v, ct),
+            AllowUnofficial() ? Resolve(Component.MfgUnlock, ResolveMfgAsync, v => Mfg = v, ct) : Task.CompletedTask,
             Resolve(Component.Dlss, ResolveDlssAsync, v => Dlss = v, ct),
             Resolve(Component.Streamline, ResolveStreamlineAsync, v => Streamline = v, ct),
             Resolve(Component.ReShade, ResolveReShadeAsync, v => ReShade = v, ct));
@@ -244,6 +240,10 @@ public sealed partial class ComponentStore
     private const string CompleteMarker = ".complete";
 
     public static bool IsCached(Component c, string tag) => File.Exists(Path.Combine(TagDir(c, tag), CompleteMarker));
+
+    /// <summary>Any release of <paramref name="c"/> was ever downloaded completely.</summary>
+    public static bool AnyCached(Component c) =>
+        Directory.Exists(ComponentDir(c)) && Directory.EnumerateFiles(ComponentDir(c), CompleteMarker, SearchOption.AllDirectories).Any();
 
     private static ReleaseInfo? NewestCached(Component c)
     {

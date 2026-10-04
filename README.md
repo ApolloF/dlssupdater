@@ -5,12 +5,25 @@ Windows app that keeps an OptiScaler-NR + ReShade + DLSS setup current across al
 It pulls the latest releases of:
 
 - [OptiScaler-DLSSNR-PreSR-Multipass](https://github.com/wilsjo2/OptiScaler-DLSSNR-PreSR-Multipass/releases) (standard package, prereleases included)
-- [MFGAdaUnlock-RenoDx](https://github.com/mavismmg/MFGAdaUnlock-RenoDx/releases) (`renodx-mfgunlock.addon64`)
 - [NVIDIA DLSS](https://github.com/NVIDIA/DLSS) runtime DLLs: `nvngx_dlss.dll` (SR), `nvngx_dlssd.dll` (RR), `nvngx_dlssg.dll` (FG)
 - [NVIDIA Streamline](https://github.com/NVIDIA-RTX/Streamline) (optional, signed `sl.*.dll` set for Dynamic MFG)
 - [ReShade](https://reshade.me) with full add-on support (`ReShade64.dll` taken from the official setup)
+- [MFGAdaUnlock-RenoDx](https://github.com/mavismmg/MFGAdaUnlock-RenoDx/releases) (`renodx-mfgunlock.addon64`), only if you turn on [unofficial components](#unofficial-components-opt-in)
 
-and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll`.
+and installs them next to each game's executable.
+
+## Unofficial components (opt-in)
+
+Two components are **off by default** and only installed after you turn on *Settings → General → Unofficial components* and confirm the warning:
+
+- the **DLSSNR runtime** (`nvngx_dlssnr.dll`), a file you supply yourself; DLSS Updater never downloads or ships it;
+- **MFG Unlock**, a third-party ReShade add-on that patches NVIDIA frame generation so 3x/4x runs on RTX 40.
+
+Neither is made or supported by NVIDIA. They come from unofficial sources, may break or crash games, and may trip anti-cheat and get an account banned. You are responsible for using them.
+
+The app checks the imported `nvngx_dlssnr.dll` for a valid NVIDIA Authenticode signature. Any other file is shown as *unverified* and is only installed because you opted in.
+
+Turning the option off stops installing and updating both. Nothing is removed from games that already have them; **Uninstall** does that. If you upgraded from 1.5.x and already had either component, the option starts on and the app shows a one-time notice about the change.
 
 ## Download
 
@@ -26,7 +39,7 @@ Both keep settings and downloads in `%LocalAppData%\DLSSUpdater`, so you can swi
 1. Finds the real game exe (Unreal `*-Win64-Shipping.exe`, Unity players, etc.; you can pick another folder).
 2. Copies `OptiScaler.dll` as the chosen proxy (`dxgi.dll` by default) plus its `OptiScaler\` backend folder.
 3. Builds `OptiScaler.ini` from the release ini plus your settings and patches `ReShade.ini` (keybinds, MFG Unlock options). Out of the box nothing is changed from what the upstream projects ship, except `LoadReshade=true` when ReShade is installed and `[DlssNr] Enabled=true` when the DLSSNR runtime is installed (both default to off upstream).
-4. Places `ReShade64.dll`, `renodx-mfgunlock.addon64` and `nvngx_dlssnr.dll` beside it.
+4. Places `ReShade64.dll` beside it, plus `renodx-mfgunlock.addon64` and `nvngx_dlssnr.dll` when unofficial components are on.
 5. Replaces every `nvngx_dlss*.dll` in the game with the latest NVIDIA build, or with a pinned version (globally or per game, also downgrading). Games that ship no DLSS have this off by default; OptiScaler still gets an `nvngx_dlss.dll` so it can offer DLSS.
 6. Optionally replaces all `sl.*.dll` the game ships with one matching Streamline release (never mixed, never adds plugins).
 7. Moves anything it replaces into `.dlssupdater\backup` next to the exe. **Uninstall** and **Restore DLSS** put the originals back.
@@ -37,7 +50,7 @@ Settings also pre-configures DLSSNR (passes, model resolution, style, strengths)
 
 Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, frame generation, DLSSNR) and ReShade (overlay, effects, screenshot, reload).
 
-**Install mode**: OptiScaler-NR (default, the main purpose) or **ReShade + add-ons**, which installs ReShade itself as the proxy (`dxgi.dll`, `d3d12.dll`, `d3d11.dll`, `d3d9.dll`, `dinput8.dll` or `opengl32.dll`) with MFG Unlock and the DLSS / Streamline updates, without OptiScaler or DLSSNR. Set the default in Settings and override it per game; switching removes the other mode's files.
+**Install mode**: OptiScaler-NR (default) or **ReShade + add-ons**, which installs ReShade itself as the proxy (`dxgi.dll`, `d3d12.dll`, `d3d11.dll`, `d3d9.dll`, `dinput8.dll` or `opengl32.dll`) with its add-ons and the DLSS / Streamline updates, without OptiScaler or DLSSNR. Set the default in Settings and override it per game; switching removes the other mode's files.
 
 **Presets**: save the whole OptiScaler / ReShade configuration (options, keybinds, overrides) under a name, load it, or assign it to single games. The built-in **Recommended (ApolloF)** preset holds the tuned setup (DLSS upscaler, preset override, overlay on **Del**, DLSSNR strengths and HDR tone mapping, ReShade tutorial skipped). **Reset to defaults** goes back to the upstream defaults.
 
@@ -49,11 +62,11 @@ Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, f
 
 Games are discovered from Steam, Epic, GOG, EA, Ubisoft and `XboxGames` folders. Standalone games can be added one by one or as a library folder whose subfolders are games.
 
-Games with anti-cheat (EAC, BattlEye, GameGuard, …) are flagged and need an extra confirmation before anything is injected. DLSS-only swaps work without it.
+Games with anti-cheat (EAC, BattlEye, GameGuard, …) are flagged and need an extra confirmation before anything is injected. Detection only looks for known anti-cheat files, so a game without a flag can still have anti-cheat. **DLSS only** swaps skip the confirmation because they inject nothing and are generally lower risk, but they are not guaranteed safe: some anti-cheat checks game files and may block the game or its online modes, and no anti-cheat vendor promises that a swap won't lead to a ban. Use any of this in online games at your own risk; the NVIDIA app's driver-level DLSS override changes no game files.
 
 ## First run
 
-`nvngx_dlssnr.dll` can't be redistributed. Put it next to `DLSSUpdater.exe` on first launch, or import it under **Settings → Local components**. It's stored in `%LocalAppData%\DLSSUpdater\components`.
+Out of the box the app updates DLSS / Streamline, OptiScaler and ReShade. The DLSSNR runtime and MFG Unlock stay off until you opt in (see [Unofficial components](#unofficial-components-opt-in)). If you do, import your own `nvngx_dlssnr.dll` under **Settings → Local components** (or put it next to `DLSSUpdater.exe` before the first launch). It's stored in `%LocalAppData%\DLSSUpdater\components`.
 
 ReShade is downloaded from reshade.me on the first install that needs it (add-on build, cached per version). To use your own build, import `ReShade64.dll` the same way; **Use download** switches back.
 

@@ -47,8 +47,14 @@ public sealed class AppSettings
     public bool InstallReShade { get; set; } = true;
     /// <summary>Download the ReShade add-on build from reshade.me when no ReShade64.dll was imported.</summary>
     public bool AutoDownloadReShade { get; set; } = true;
-    public bool InstallMfgUnlock { get; set; } = true;
-    public bool InstallDlssNr { get; set; } = true;
+    /// <summary>Opt-in for the DLSSNR runtime and MFG Unlock (see <see cref="UnofficialComponents"/>); off by default.</summary>
+    public bool AllowUnofficial { get; set; }
+    /// <summary>The one-time notice about <see cref="AllowUnofficial"/> hasn't been shown since an upgrade.</summary>
+    public bool UnofficialNoticePending { get; set; }
+    /// <summary>0 = written by 1.5.x or earlier.</summary>
+    public int SettingsVersion { get; set; }
+    public bool InstallMfgUnlock { get; set; }
+    public bool InstallDlssNr { get; set; }
     public bool AddMissingDlss { get; set; } = true;
     /// <summary>Legacy (1.0/1.1); false maps to IniMode "fresh".</summary>
     public bool CarryOverGameIni { get; set; } = true;
@@ -84,6 +90,7 @@ public sealed class AppSettings
                 var s = JsonSerializer.Deserialize(File.ReadAllText(AppPaths.SettingsFile), JsonCtx.Default.AppSettings);
                 if (s is not null)
                 {
+                    if (UnofficialComponents.Migrate(s, UnofficialComponents.PresentOnDisk)) s.Save();
                     s.Games = new Dictionary<string, GameOverride>(s.Games, StringComparer.OrdinalIgnoreCase);
                     if (!s.CarryOverGameIni && s.IniMode == "keep") s.IniMode = "fresh";
                     s.CarryOverGameIni = true;
@@ -96,7 +103,7 @@ public sealed class AppSettings
         {
             Log.Error("settings.json unreadable, using defaults", ex);
         }
-        return new AppSettings();
+        return new AppSettings { SettingsVersion = UnofficialComponents.SettingsVersion };
     }
 
     public void Save()

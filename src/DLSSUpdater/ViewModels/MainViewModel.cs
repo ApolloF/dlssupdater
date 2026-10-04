@@ -24,7 +24,11 @@ public sealed partial class MainViewModel : ObservableObject
         Log.TrimFile();
         var settings = AppSettings.Load();
         var gh = new GitHubClient { Token = settings.GitHubToken };
-        var store = new ComponentStore(gh, () => settings.IncludePrereleases) { AutoReShade = () => settings.AutoDownloadReShade };
+        var store = new ComponentStore(gh, () => settings.IncludePrereleases)
+        {
+            AutoReShade = () => settings.AutoDownloadReShade,
+            AllowUnofficial = () => settings.AllowUnofficial,
+        };
         S = new Services { Settings = settings, Store = store, Installer = new Installer(store) };
         Gh = gh;
         SettingsVm = new SettingsViewModel(this);
@@ -152,6 +156,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         S.Store.AutoImport();
         await RefreshLocalComponentsAsync();
+        ShowUnofficialNotice();
 
         var cached = GameScanner.LoadCache();
         if (cached.Count > 0) ApplyScan(cached);
@@ -164,16 +169,18 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var store = S.Store;
         var rsPath = store.CurrentReShadePath;
-        var (nr, rs) = await Task.Run(() => (
+        var (nr, sig, rs) = await Task.Run(() => (
             File.Exists(store.DlssNrPath) ? HashCache.Get(store.DlssNrPath) : null,
+            File.Exists(store.DlssNrPath) ? Authenticode.Check(store.DlssNrPath) : (SignatureStatus?)null,
             rsPath is not null ? HashCache.Get(rsPath) : null));
         S.DlssNrSha = nr;
+        S.DlssNrSignature = sig;
         S.ReShadeSha = rs;
 
-        DlssNrOk = nr is not null;
-        DlssNrText = nr is null ? "missing"
-            : FileUtil.Format(FileUtil.ReadVersion(store.DlssNrPath)) +
-              (ComponentStore.KnownDlssNr.TryGetValue(nr, out var variant) ? $" · {variant.Split(" · ")[0]}" : " · unverified");
+        DlssNrOk = nr is not null || !S.Settings.AllowUnofficial;
+        DlssNrText = !S.Settings.AllowUnofficial ? "off"
+            : nr is null ? "missing"
+            : FileUtil.Format(FileUtil.ReadVersion(store.DlssNrPath)) + " · " + Authenticode.Label(sig);
         var auto = S.Settings.AutoDownloadReShade && !store.ReShadeImported;
         ReShadeOk = rs is not null || (auto && store.ReShade is not null);
         ReShadeText = rsPath is not null ? FileUtil.Format(FileUtil.ReadVersion(rsPath)) + (auto ? " · auto" : "")
@@ -181,6 +188,24 @@ public sealed partial class MainViewModel : ObservableObject
             : auto ? "auto" : "missing";
         foreach (var g in Games) g.RefreshStatus();
         CountUpdates();
+    }
+
+    /// <summary>Once after upgrading from a version that installed unofficial components by default.</summary>
+    private void ShowUnofficialNotice()
+    {
+        if (!S.Settings.UnofficialNoticePending) return;
+        Dialog.Show($"{UnofficialComponents.Title} are now opt-in", UnofficialComponents.Notice(S.Settings.AllowUnofficial));
+        S.Settings.UnofficialNoticePending = false;
+        S.Settings.Save();
+    }
+
+    /// <summary>The unofficial-components opt-in changed: header, game rows and (when turned on) the MFG Unlock lookup follow.</summary>
+    public async Task ApplyUnofficialSettingAsync()
+    {
+        foreach (var g in Games) g.ReloadComponents();
+        if (!S.Settings.AllowUnofficial) MfgVersion = "off";
+        await RefreshLocalComponentsAsync();
+        if (S.Settings.AllowUnofficial && CheckUpdatesCommand.CanExecute(null)) await CheckUpdatesCommand.ExecuteAsync(null);
     }
 
     // ---------- commands: global ----------
@@ -198,7 +223,7 @@ public sealed partial class MainViewModel : ObservableObject
         Online = s.Opti is { FromCache: false } || s.Dlss is { FromCache: false } || s.Mfg is { FromCache: false };
         OptiVersion = s.Opti is null ? "—" : s.Opti.Tag + (s.Opti.Prerelease ? " pre" : "");
         DlssVersion = s.Dlss?.Tag.TrimStart('v') ?? "—";
-        MfgVersion = s.Mfg?.Tag ?? (File.Exists(Path.Combine(AppPaths.Components, ComponentStore.MfgFile)) ? "local" : "—");
+        MfgVersion = !S.Settings.AllowUnofficial ? "off" : s.Mfg?.Tag ?? (File.Exists(Path.Combine(AppPaths.Components, ComponentStore.MfgFile)) ? "local" : "—");
         StreamlineVersion = s.Streamline?.Tag.TrimStart('v') ?? "—";
         foreach (var g in Games)
         {

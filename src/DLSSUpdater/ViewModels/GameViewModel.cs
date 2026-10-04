@@ -33,8 +33,8 @@ public sealed record ModeChoice(InstallMode Mode, string Label, string Descripti
 {
     public static readonly ModeChoice[] All =
     [
-        new(InstallMode.OptiScaler, "OptiScaler-NR", "OptiScaler-NR as the proxy; it loads ReShade, add-ons and DLSSNR."),
-        new(InstallMode.ReShadeOnly, "ReShade + add-ons", "ReShade as the proxy with MFG Unlock and DLSS updates, without OptiScaler."),
+        new(InstallMode.OptiScaler, "OptiScaler-NR", "OptiScaler-NR as the proxy; it loads ReShade and add-ons (and DLSSNR, if enabled)."),
+        new(InstallMode.ReShadeOnly, "ReShade + add-ons", "ReShade as the proxy with its add-ons and DLSS updates, without OptiScaler."),
     ];
 
     public override string ToString() => Label;
@@ -52,6 +52,7 @@ public sealed class Services
     public required ComponentStore Store { get; init; }
     public required Installer Installer { get; init; }
     public string? DlssNrSha { get; set; }
+    public SignatureStatus? DlssNrSignature { get; set; }
     public string? ReShadeSha { get; set; }
 }
 
@@ -126,12 +127,21 @@ public sealed partial class GameViewModel : ObservableObject
     {
         foreach (var c in Components)
         {
-            c.Visible = !(IsReShadeOnly && c.Key is "opti" or "dlssnr");
-            c.Editable = !(IsReShadeOnly && c.Key == "reshade");
-            if (!c.Editable) c.Enabled = true;
+            // Unofficial components while opted out: shown only where a game already has them, never installed or updated.
+            var gated = IsGated(c.Key);
+            c.Visible = !(IsReShadeOnly && c.Key is "opti" or "dlssnr") && (!gated || (Manifest is { } m && IsTracked(m, c.Key)));
+            c.Editable = !(IsReShadeOnly && c.Key == "reshade") && !gated;
+            if (gated) c.Enabled = false;
+            else if (!c.Editable) c.Enabled = true;
         }
         OnPropertyChanged(nameof(AnyEnabled));
     }
+
+    private bool AllowUnofficial => _s.Settings.AllowUnofficial;
+    private bool IsGated(string key) => !AllowUnofficial && key is "mfg" or "dlssnr";
+
+    /// <summary>Re-reads the rows after the unofficial-components setting changed.</summary>
+    public void ReloadComponents() => LoadManifest();
 
     [ObservableProperty] private TargetOption? _selectedTarget;
     [ObservableProperty] private string _proxy = "dxgi.dll";
@@ -321,8 +331,8 @@ public sealed partial class GameViewModel : ObservableObject
         var m = Manifest;
         Set("opti", m?.Opti ?? true);
         Set("reshade", m?.ReShade ?? _s.Settings.InstallReShade);
-        Set("mfg", m?.Mfg ?? _s.Settings.InstallMfgUnlock);
-        Set("dlssnr", m?.DlssNr ?? _s.Settings.InstallDlssNr);
+        Set("mfg", m?.Mfg ?? (AllowUnofficial && _s.Settings.InstallMfgUnlock));
+        Set("dlssnr", m?.DlssNr ?? (AllowUnofficial && _s.Settings.InstallDlssNr));
         Set("dlss", m?.Dlss ?? HasDlss); // nothing to replace in games that don't ship DLSS
         Set("streamline", m?.Streamline ?? (_s.Settings.InstallStreamline && HasStreamline));
         ApplyModeToRows();
@@ -348,6 +358,11 @@ public sealed partial class GameViewModel : ObservableObject
         Row("mfg", m?.Mfg == true ? m.MfgTag : null, store.Mfg?.Tag, true);
         Row("dlssnr", m?.DlssNr == true ? InstalledVersion(ComponentStore.DlssNrFile) : null, File.Exists(store.DlssNrPath) ? DlssNrLabel() : null,
             m?.DlssNr != true || m.DlssNrSha == _s.DlssNrSha);
+        foreach (var c in Components.Where(c => IsGated(c.Key)))
+        {
+            c.Latest = "opted out";
+            c.State = RowState.None;
+        }
 
         var latest = LatestDlss;
         DlssRows.Clear();
@@ -436,7 +451,7 @@ public sealed partial class GameViewModel : ObservableObject
     private string DlssNrLabel()
     {
         var v = FileUtil.Format(FileUtil.ReadVersion(_s.Store.DlssNrPath));
-        return _s.DlssNrSha is { } h && ComponentStore.KnownDlssNr.ContainsKey(h) ? v : $"{v} (unverified)";
+        return _s.DlssNrSignature == SignatureStatus.NvidiaSigned ? v : $"{v} (unverified)";
     }
 
     private string? InstalledVersion(string file) =>
@@ -447,8 +462,9 @@ public sealed partial class GameViewModel : ObservableObject
         Mode = Mode,
         Opti = !dlssOnly && !IsReShadeOnly && On("opti"),
         ReShade = !dlssOnly && (IsReShadeOnly || On("reshade")),
-        Mfg = !dlssOnly && On("mfg"),
-        DlssNr = !dlssOnly && !IsReShadeOnly && On("dlssnr"),
+        Mfg = !dlssOnly && AllowUnofficial && On("mfg"),
+        DlssNr = !dlssOnly && AllowUnofficial && !IsReShadeOnly && On("dlssnr"),
+        KeepDlssNr = !AllowUnofficial && Manifest?.DlssNr == true,
         Dlss = dlssOnly || On("dlss"),
         AddMissingDlss = _s.Settings.AddMissingDlss && !dlssOnly && !IsReShadeOnly && On("opti"),
         DlssTag = EffectiveDlssTag,
@@ -467,8 +483,9 @@ public sealed partial class GameViewModel : ObservableObject
         Mode = m.Mode,
         Opti = m.Opti,
         ReShade = m.ReShade,
-        Mfg = m.Mfg,
-        DlssNr = m.DlssNr,
+        Mfg = AllowUnofficial && m.Mfg,
+        DlssNr = AllowUnofficial && m.DlssNr,
+        KeepDlssNr = !AllowUnofficial && m.DlssNr,
         Dlss = m.Dlss,
         AddMissingDlss = m.Opti && m.Files.Any(f => Path.GetFileName(f).Equals("nvngx_dlss.dll", StringComparison.OrdinalIgnoreCase)),
         DlssTag = EffectiveDlssTag,

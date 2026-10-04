@@ -172,6 +172,30 @@ public sealed partial class SettingsViewModel : ObservableObject
         set { Settings.InstallReShade = value; Save(); }
     }
 
+    public string UnofficialWarning => UnofficialComponents.Warning;
+
+    /// <summary>Opt-in for the DLSSNR runtime and MFG Unlock; turning it on needs the warning confirmed.</summary>
+    public bool AllowUnofficial
+    {
+        get => Settings.AllowUnofficial;
+        set
+        {
+            if (value == Settings.AllowUnofficial) return;
+            if (value && !Views.Dialog.Confirm("Turn on unofficial components?", UnofficialComponents.Warning, "I understand, turn on", danger: true))
+            {
+                // Untick the checkbox again once WPF has finished this binding update.
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(AllowUnofficial)));
+                return;
+            }
+            Settings.AllowUnofficial = value;
+            Save();
+            Log.Info($"{UnofficialComponents.Title} turned {(value ? "on" : "off")}");
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DlssNrInfo));
+            _ = _main.ApplyUnofficialSettingAsync();
+        }
+    }
+
     public bool InstallMfgUnlock
     {
         get => Settings.InstallMfgUnlock;
@@ -213,15 +237,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public string DlssNrInfo => Describe(_main.S.Store.DlssNrPath, _main.S.DlssNrSha, true);
+    public string DlssNrInfo => Describe(_main.S.Store.DlssNrPath, _main.S.DlssNrSha, _main.S.DlssNrSignature);
     public string ReShadeInfo
     {
         get
         {
             var store = _main.S.Store;
-            if (store.ReShadeImported) return "Imported  ·  " + Describe(store.ReShadePath, _main.S.ReShadeSha, false);
+            if (store.ReShadeImported) return "Imported  ·  " + Describe(store.ReShadePath, _main.S.ReShadeSha, null);
             if (!AutoDownloadReShade) return "Not imported";
-            if (store.CurrentReShadePath is { } path) return "Downloaded from reshade.me (add-on build)  ·  " + Describe(path, _main.S.ReShadeSha, false);
+            if (store.CurrentReShadePath is { } path) return "Downloaded from reshade.me (add-on build)  ·  " + Describe(path, _main.S.ReShadeSha, null);
             return store.ReShade is { } r ? $"Downloaded from reshade.me on first install (add-on build {r.Tag})" : "Downloaded from reshade.me on first install";
         }
     }
@@ -257,13 +281,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoDownloadReShade));
     }
 
-    private static string Describe(string path, string? sha, bool known)
+    /// <param name="signature">Checked only for NVIDIA DLLs; null for files that aren't.</param>
+    private string Describe(string path, string? sha, SignatureStatus? signature)
     {
         if (!File.Exists(path) || sha is null) return "Not imported";
         var v = FileUtil.Format(FileUtil.ReadVersion(path));
         var size = new FileInfo(path).Length / 1048576.0;
-        var variant = known ? (ComponentStore.KnownDlssNr.TryGetValue(sha, out var n) ? n : "unknown build, hash not in INSTALL-DLSSNR.md") : null;
-        return $"{v}  ·  {size:0.0} MB  ·  SHA-256 {sha[..12]}…" + (variant is null ? "" : $"\n{variant}");
+        var trust = signature switch
+        {
+            SignatureStatus.NvidiaSigned => "Signed by NVIDIA Corporation (Authenticode)",
+            SignatureStatus.Unverified => "Unverified: no valid NVIDIA signature" +
+                                          (Settings.AllowUnofficial ? ". Installed because you turned on unofficial components." : "."),
+            _ => null,
+        };
+        return $"{v}  ·  {size:0.0} MB  ·  SHA-256 {sha[..12]}…" + (trust is null ? "" : $"\n{trust}");
     }
 
     private void Save() => Settings.Save();

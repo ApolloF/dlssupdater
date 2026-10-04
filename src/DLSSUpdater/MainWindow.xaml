@@ -434,7 +434,7 @@
                             <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Danger}" Margin="0,0,10,0" />
                             <TextBlock TextWrapping="Wrap">
                                 <Run Text="{Binding AntiCheat, Mode=OneWay}" FontWeight="SemiBold" />
-                                <Run Text=" detected. Injecting DLLs can get you banned in online modes. DLSS-only swaps are safe." Foreground="{StaticResource Muted}" />
+                                <Run Text=" detected. Injecting DLLs can get you banned in online modes. DLSS-only swaps are lower risk but not guaranteed: anti-cheat may still block the game or its online modes. Use at your own risk." Foreground="{StaticResource Muted}" />
                             </TextBlock>
                         </StackPanel>
                     </Border>
@@ -682,6 +682,27 @@
                                 <TextBlock Text="nvngx_dlssnr.dll isn't redistributable, so it's imported once and kept in the app's data folder. ReShade is fetched from reshade.me automatically; import your own build (with full add-on support) to use that instead."
                                            Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" />
 
+                                <TextBlock Text="UNOFFICIAL COMPONENTS" Style="{StaticResource SectionTitle}" />
+                                <Border Style="{StaticResource Card}" Padding="16,6">
+                                    <StackPanel>
+                                        <Border Margin="0,10,0,4" Background="{StaticResource DangerSoft}" BorderBrush="{StaticResource Danger}" BorderThickness="2,0,0,0" Padding="12,8">
+                                            <TextBlock Text="{Binding UnofficialWarning}" TextWrapping="Wrap" FontSize="12" LineHeight="18" />
+                                        </Border>
+                                        <CheckBox IsChecked="{Binding AllowUnofficial}" Margin="0,8"
+                                                  AutomationProperties.HelpText="{Binding UnofficialWarning}">
+                                            <StackPanel>
+                                                <TextBlock Text="Allow unofficial components (DLSSNR runtime, MFG Unlock)" />
+                                                <TextBlock Text="Off by default. Turning it off stops installing and updating them; files already in a game stay until you uninstall them there."
+                                                           Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <CheckBox Content="Install MFG Unlock add-on in new installs" IsChecked="{Binding InstallMfgUnlock}" Margin="24,8,0,8"
+                                                  IsEnabled="{Binding AllowUnofficial}" />
+                                        <CheckBox Content="Install DLSSNR runtime in new installs" IsChecked="{Binding InstallDlssNr}" Margin="24,8,0,8"
+                                                  IsEnabled="{Binding AllowUnofficial}" />
+                                    </StackPanel>
+                                </Border>
+
                                 <TextBlock Text="DEFAULTS" Style="{StaticResource SectionTitle}" />
                                 <Border Style="{StaticResource Card}" Padding="16,6">
                                     <StackPanel>
@@ -722,8 +743,6 @@
                                             </StackPanel>
                                         </CheckBox>
                                         <CheckBox Content="Install ReShade" IsChecked="{Binding InstallReShade}" Margin="0,8" />
-                                        <CheckBox Content="Install MFG Unlock add-on" IsChecked="{Binding InstallMfgUnlock}" Margin="0,8" />
-                                        <CheckBox Content="Install DLSSNR runtime" IsChecked="{Binding InstallDlssNr}" Margin="0,8" />
                                         <CheckBox IsChecked="{Binding InstallStreamline}" Margin="0,8">
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal">
@@ -938,9 +957,9 @@
 
                         <TextBlock Text="USAGE" Style="{StaticResource SectionTitle}" />
                         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Muted}" LineHeight="21">
-                            <Run Foreground="{StaticResource Text}">Install / Update</Run> puts OptiScaler-NR, ReShade, MFG Unlock and DLSSNR next to the game exe and swaps DLSS to the chosen version.<LineBreak />
+                            <Run Foreground="{StaticResource Text}">Install / Update</Run> puts OptiScaler-NR and ReShade (plus MFG Unlock and DLSSNR, if you turned on unofficial components) next to the game exe and swaps DLSS to the chosen version.<LineBreak />
                             <Run Foreground="{StaticResource Text}">Update all</Run> re-applies everything after a new release or a game patch.<LineBreak />
-                            <Run Foreground="{StaticResource Text}">DLSS only</Run> swaps DLSS files without injecting anything (safe with anti-cheat).<LineBreak />
+                            <Run Foreground="{StaticResource Text}">DLSS only</Run> swaps DLSS files without injecting anything. Lower risk with anti-cheat, but not guaranteed safe: some games block changed files or their online modes.<LineBreak />
                             <Run Foreground="{StaticResource Text}">Uninstall / Restore DLSS</Run> put back the originals kept in .dlssupdater\backup.<LineBreak />
                             Settings a game already has in OptiScaler.ini or ReShade.ini are kept on update.
                         </TextBlock>
@@ -1019,7 +1038,7 @@
                                     <x:Array Type="sys:String"><sys:String>OptiScaler</sys:String><sys:String>Upstream project and wiki</sys:String></x:Array>
                                 </Button>
                                 <Button Tag="https://github.com/mavismmg/MFGAdaUnlock-RenoDx">
-                                    <x:Array Type="sys:String"><sys:String>MFG Unlock</sys:String><sys:String>mavismmg · RTX 40 multi frame generation add-on</sys:String></x:Array>
+                                    <x:Array Type="sys:String"><sys:String>MFG Unlock</sys:String><sys:String>mavismmg · unofficial RTX 40 frame generation add-on (opt-in)</sys:String></x:Array>
                                 </Button>
                                 <Button Tag="https://github.com/NVIDIA/DLSS">
                                     <x:Array Type="sys:String"><sys:String>NVIDIA DLSS</sys:String><sys:String>SR, RR and FG runtime DLLs</sys:String></x:Array>
@@ -1031,7 +1050,7 @@
                                     <x:Array Type="sys:String"><sys:String>ReShade</sys:String><sys:String>crosire · use the full add-on build</sys:String></x:Array>
                                 </Button>
                                 <Button Tag="https://github.com/clshortfuse/renodx">
-                                    <x:Array Type="sys:String"><sys:String>RenoDX</sys:String><sys:String>ShortFuse · add-on framework, DLSSNR compat runtime</sys:String></x:Array>
+                                    <x:Array Type="sys:String"><sys:String>RenoDX</sys:String><sys:String>ShortFuse · add-on framework</sys:String></x:Array>
                                 </Button>
                                 <Button Tag="https://github.com/ApolloF/dlssupdater">
                                     <x:Array Type="sys:String"><sys:String>DLSS Updater</sys:String><sys:String>This app · source and releases</sys:String></x:Array>

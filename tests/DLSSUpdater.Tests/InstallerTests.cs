@@ -154,6 +154,31 @@ public class InstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_OptedOutOfUnofficial_LeavesInstalledOnesWorking()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+
+        // Unofficial components turned off afterwards: updates skip them, but nothing is removed or switched off.
+        SeedMfg("2.0", "MFG-2");
+        Write(Path.Combine(AppPaths.Components, ComponentStore.DlssNrFile), "NR-2");
+        SeedOpti("v10.0.0", "OPTI-2");
+        await installer.InstallAsync(Game(), _target, new InstallOptions
+        {
+            Opti = true, ReShade = true, Mfg = false, DlssNr = false, KeepDlssNr = true, Dlss = true, AddMissingDlss = true,
+            Proxy = "dxgi.dll", Overrides = ConfigProfile.Defaults(), CarryOverIni = true,
+        }, null, default);
+
+        Assert.Equal("OPTI-2", T("dxgi.dll"));
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("NR", T(ComponentStore.DlssNrFile));
+        var m = InstallManifest.Load(_target)!;
+        Assert.True(m.Mfg);
+        Assert.True(m.DlssNr);
+        Assert.Equal("true", IniFile.Load(Path.Combine(_target, "OptiScaler.ini")).Get("DlssNr", "Enabled"));
+    }
+
+    [Fact]
     public async Task DlssOnly_ThenRestore_ReturnsOriginals()
     {
         var before = Snapshot();

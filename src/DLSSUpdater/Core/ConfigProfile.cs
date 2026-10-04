@@ -63,23 +63,23 @@ public static class ConfigProfile
     /// <summary>
     /// Keys without which an installed component does nothing (upstream ships both as false): ReShade loaded by
     /// OptiScaler and DLSSNR turned on. Added unless the profile sets the key itself; like profile values they
-    /// never replace a value the game's own ini already has.
+    /// never replace a value the game's own ini already has. <paramref name="keepDlssNr"/>: see <see cref="InstallOptions.KeepDlssNr"/>.
     /// </summary>
-    public static List<IniOverride> Required(InstallOptions o)
+    public static List<IniOverride> Required(InstallOptions o, bool keepDlssNr = false)
     {
         var list = new List<IniOverride>();
         if (!o.Opti) return list;
         if (o.ReShade) list.Add(new("Plugins", "LoadReshade", "true"));
-        if (o.DlssNr) list.Add(new("DlssNr", "Enabled", "true"));
+        if (o.DlssNr || keepDlssNr) list.Add(new("DlssNr", "Enabled", "true"));
         return list;
     }
 
     /// <summary>The profile plus every <see cref="Required"/> key it doesn't set itself.</summary>
-    public static List<IniOverride> WithRequired(IEnumerable<IniOverride> profile, InstallOptions o)
+    public static List<IniOverride> WithRequired(IEnumerable<IniOverride> profile, InstallOptions o, bool keepDlssNr = false)
     {
         var list = profile.ToList();
         var ids = list.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        list.AddRange(Required(o).Where(r => !ids.Contains(r.Id)));
+        list.AddRange(Required(o, keepDlssNr).Where(r => !ids.Contains(r.Id)));
         return list;
     }
 
