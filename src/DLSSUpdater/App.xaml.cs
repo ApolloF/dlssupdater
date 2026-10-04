@@ -40,6 +40,8 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        // Made-up games for screenshots and trying the interface; see Core/Demo.cs.
+        if (e.Args.Contains("--demo")) Demo.Enable();
         DispatcherUnhandledException += OnUnhandled;
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {

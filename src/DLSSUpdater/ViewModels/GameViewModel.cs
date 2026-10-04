@@ -146,7 +146,7 @@ public sealed partial class GameViewModel : ObservableObject
 
     partial void OnDetailTabChanged(string value)
     {
-        if (value != "Nvidia") return;
+        if (value != "Nvidia" || Demo.Active) return;
         if (Driver is null && DriverExe is { } exe) Driver = new DriverProfileViewModel(exe, Name, Features, Info.FgVersion);
         if (Driver is { Loaded: false, Busy: false } d) d.LoadCommand.Execute(null);
     }
@@ -313,7 +313,7 @@ public sealed partial class GameViewModel : ObservableObject
     private void LoadManifest()
     {
         _loading = true;
-        Manifest = SelectedTarget is null ? null : InstallManifest.Load(SelectedTarget.Dir);
+        Manifest = SelectedTarget is null ? null : Demo.Active ? Demo.ManifestAt(SelectedTarget.Dir) : InstallManifest.Load(SelectedTarget.Dir);
         var over = _s.Settings.Games.GetValueOrDefault(Id);
         Mode = Manifest is { } im && (im.Opti || im.ReShade) ? im.Mode : over?.Mode ?? _s.Settings.DefaultMode;
         Proxy = Manifest?.Proxy ?? _s.Settings.Games.GetValueOrDefault(Id)?.Proxy ?? ExistingOptiProxy() ?? _s.Settings.DefaultProxy;

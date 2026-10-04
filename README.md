@@ -85,3 +85,5 @@ iscc /DAppVersion=1.5.1 installer\DLSSUpdater.iss
 Tagging `v*` (matching `<Version>` in the csproj) builds both on GitHub Actions and attaches them to a release.
 
 `DLSSU_INTEGRATION=1` enables a test that downloads the real releases (including ReShade from reshade.me) and installs them into a temporary folder.
+
+`DLSSUpdater.exe --demo` opens the app with made-up games and releases, for screenshots and trying the interface. It keeps its data in `%TEMP%\DLSSUpdater-demo`, doesn't scan, download or read driver profiles, and its installs only pretend: nothing is written to game folders.
