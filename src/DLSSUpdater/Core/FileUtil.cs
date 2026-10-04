@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace DLSSUpdater.Core;
 
@@ -68,11 +69,16 @@ public static class FileUtil
         File.Move(tmp, dest, true);
     }
 
+    /// <summary>Writes via a temp file that is flushed to disk before the rename, so a power loss leaves the old or the new text, never a torn file.</summary>
     public static void AtomicWriteText(string dest, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         var tmp = dest + ".dlssu-tmp";
-        File.WriteAllText(tmp, text);
+        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            fs.Write(new UTF8Encoding(false).GetBytes(text));
+            fs.Flush(flushToDisk: true);
+        }
         File.Move(tmp, dest, true);
     }
 
@@ -84,6 +90,35 @@ public static class FileUtil
     }
 
     public static string Normalize(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+
+    /// <summary>
+    /// The first junction or symbolic link on the way from <paramref name="root"/> (not included) down to
+    /// <paramref name="path"/> (included), or null. Other reparse points (OneDrive placeholders, dedup) are not links.
+    /// </summary>
+    public static string? LinkBelow(string root, string path)
+    {
+        var r = Normalize(root);
+        var cur = Normalize(path);
+        while (cur.Length > r.Length && IsUnder(cur, r))
+        {
+            if (IsLink(cur)) return cur;
+            cur = Path.GetDirectoryName(cur)!;
+        }
+        return null;
+    }
+
+    private static bool IsLink(string path)
+    {
+        try
+        {
+            var attrs = File.GetAttributes(path);
+            if ((attrs & FileAttributes.ReparsePoint) == 0) return false;
+            FileSystemInfo info = (attrs & FileAttributes.Directory) != 0 ? new DirectoryInfo(path) : new FileInfo(path);
+            return info.LinkTarget is not null;
+        }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
 
     public static void TryDeleteEmptyDir(string dir)
     {

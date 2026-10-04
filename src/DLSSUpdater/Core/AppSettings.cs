@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DLSSUpdater.Scan;
@@ -40,6 +42,10 @@ public sealed class AppSettings
     public static readonly string[] ReShadeProxyNames =
         ["dxgi.dll", "d3d12.dll", "d3d11.dll", "d3d9.dll", "dinput8.dll", "opengl32.dll"];
 
+    /// <summary>A proxy name DLSS Updater would ever install under (OptiScaler or ReShade-only).</summary>
+    public static bool IsKnownProxy(string? name) =>
+        name is not null && (ProxyNames.Contains(name, StringComparer.OrdinalIgnoreCase) || ReShadeProxyNames.Contains(name, StringComparer.OrdinalIgnoreCase));
+
     public string DefaultProxy { get; set; } = "dxgi.dll";
     /// <summary>What a new install puts in: OptiScaler-NR (the main purpose) or ReShade with add-ons only.</summary>
     public InstallMode DefaultMode { get; set; } = InstallMode.OptiScaler;
@@ -54,7 +60,29 @@ public sealed class AppSettings
     public bool CarryOverGameIni { get; set; } = true;
     /// <summary>keep | apply | fresh — how existing game configs are treated.</summary>
     public string IniMode { get; set; } = "keep";
-    public string? GitHubToken { get; set; }
+    /// <summary>GitHub token; settings.json holds it only encrypted for this Windows user (DPAPI).</summary>
+    [JsonIgnore]
+    public string? GitHubToken
+    {
+        get => Unprotect(GitHubTokenProtected);
+        set => GitHubTokenProtected = Protect(value);
+    }
+    public string? GitHubTokenProtected { get; set; }
+
+    /// <summary>The plain-text token 1.5.1 and earlier saved: read once, then saved encrypted, never written.</summary>
+    [JsonPropertyName("GitHubToken")]
+    public string? LegacyGitHubToken
+    {
+        get => null;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            GitHubToken = value;
+            _legacyTokenRead = true;
+        }
+    }
+
+    private bool _legacyTokenRead;
     public List<IniOverride> IniOverrides { get; set; } = ConfigProfile.Defaults();
     public List<IniOverride> ReShadeOverrides { get; set; } = ConfigProfile.ReShadeDefaults();
     public bool InstallStreamline { get; set; }
@@ -88,6 +116,7 @@ public sealed class AppSettings
                     if (!s.CarryOverGameIni && s.IniMode == "keep") s.IniMode = "fresh";
                     s.CarryOverGameIni = true;
                     s.Presets.RemoveAll(p => p.Name.Equals(ConfigProfile.RecommendedName, StringComparison.OrdinalIgnoreCase));
+                    if (s._legacyTokenRead) s.Save();
                     return s;
                 }
             }
@@ -103,6 +132,23 @@ public sealed class AppSettings
     {
         try { FileUtil.AtomicWriteText(AppPaths.SettingsFile, JsonSerializer.Serialize(this, JsonCtx.Default.AppSettings)); }
         catch (IOException ex) { Log.Error("Could not save settings", ex); }
+    }
+
+    private static string? Protect(string? secret) =>
+        string.IsNullOrEmpty(secret)
+            ? null
+            : Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), null, DataProtectionScope.CurrentUser));
+
+    private static string? Unprotect(string? stored)
+    {
+        if (string.IsNullOrEmpty(stored)) return null;
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(stored), null, DataProtectionScope.CurrentUser)); }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            // Encrypted by another Windows user or PC: the token has to be entered again.
+            Log.Error("Saved GitHub token can't be decrypted on this account", ex);
+            return null;
+        }
     }
 }
 

@@ -10,7 +10,7 @@ namespace DLSSUpdater.Core;
 [JsonConverter(typeof(JsonStringEnumConverter<InstallMode>))]
 public enum InstallMode { OptiScaler, ReShadeOnly }
 
-public sealed class InstallOptions
+public sealed record InstallOptions
 {
     public InstallMode Mode { get; init; }
     public bool ReShadeOnly => Mode == InstallMode.ReShadeOnly;
@@ -32,6 +32,23 @@ public sealed class InstallOptions
     public IReadOnlyList<IniOverride> Overrides { get; init; } = [];
     public IReadOnlyList<IniOverride> ReShadeOverrides { get; init; } = [];
     public bool AntiCheatConfirmed { get; init; }
+    /// <summary>OptiScaler-NR release to install from the cache; null = the newest.</summary>
+    public string? OptiTag { get; init; }
+    /// <summary>MFG Unlock release to install from the cache ("local" = the imported file); null = the newest.</summary>
+    public string? MfgTag { get; init; }
+
+    /// <summary>
+    /// The same install with OptiScaler-NR and MFG Unlock held at the versions the game already has, for automatic
+    /// reinstalls (a Seaglass launch) that must not pull in a release nobody chose. A component whose installed
+    /// version is no longer cached is left as it is.
+    /// </summary>
+    public InstallOptions KeepingInstalledVersions(InstallManifest m) => this with
+    {
+        Opti = Opti && m.OptiTag is { } ot && ComponentStore.IsCached(Component.OptiScaler, ot),
+        OptiTag = m.OptiTag,
+        Mfg = Mfg && m.MfgTag is { } mt && ComponentStore.HasMfg(mt),
+        MfgTag = m.MfgTag,
+    };
 }
 
 public sealed class NeedsAdminException(string path)
@@ -51,7 +68,11 @@ public sealed class Installer(ComponentStore store)
     private sealed record Ctx(string Root, string Target, InstallManifest M)
     {
         public string Rel(string full) => Path.GetRelativePath(Root, full);
-        public string Full(string rel) => Path.GetFullPath(Path.Combine(Root, rel));
+        public string Full(string rel)
+        {
+            var full = Path.GetFullPath(Path.Combine(Root, rel));
+            return FileUtil.IsUnder(full, Root) ? full : throw new UnsafeManifestException(Target, $"\"{rel}\" is outside {Root}");
+        }
         public string BackupDir => InstallManifest.BackupDirFor(Target);
     }
 
@@ -75,10 +96,11 @@ public sealed class Installer(ComponentStore store)
     private async Task InstallCoreAsync(GameInfo game, string targetDir, InstallOptions o, IProgress<TransferProgress>? progress, CancellationToken ct)
     {
         if (o.ReShadeOnly && !o.ReShade) throw new InvalidOperationException("ReShade-only mode installs ReShade as the proxy; ReShade can't be left out.");
+        if (!AppSettings.IsKnownProxy(o.Proxy)) throw new ArgumentException($"\"{o.Proxy}\" is not a proxy name DLSS Updater installs under.", nameof(o));
         // Fetch everything first so a network failure never leaves a half-installed game.
-        var pkg = o.Opti && !o.ReShadeOnly ? await store.EnsureOptiAsync(progress, ct) : null;
+        var pkg = o.Opti && !o.ReShadeOnly ? await store.EnsureOptiAsync(o.OptiTag, progress, ct) : null;
         var dlssNr = o.DlssNr && !o.ReShadeOnly;
-        var mfg = o.Mfg ? await store.EnsureMfgAsync(progress, ct) : null;
+        var mfg = o.Mfg ? await store.EnsureMfgAsync(o.MfgTag, progress, ct) : null;
         var addMissing = o.AddMissingDlss && o.Opti;
         var dlss = o.Dlss || addMissing ? await store.EnsureDlssAsync(o.DlssTag, progress, ct) : null;
         var sl = o.Streamline && game.Streamline.Count > 0 ? await store.EnsureStreamlineAsync(progress, ct) : null;
@@ -88,8 +110,9 @@ public sealed class Installer(ComponentStore store)
         var reshade = o.ReShade ? await store.EnsureReShadeFileAsync(progress, ct) : null;
 
         progress?.Report(new TransferProgress($"Installing to {game.Name}", null));
-        var m = InstallManifest.Load(targetDir) ?? new InstallManifest();
-        m.RootRel = Path.GetRelativePath(targetDir, game.Root);
+        // An unreadable or unsafe record stops the install instead of starting over and burying the originals.
+        var m = InstallManifest.Read(targetDir) ?? new InstallManifest();
+        m.Contain(targetDir, game.Root);
         var ctx = new Ctx(FileUtil.Normalize(game.Root), targetDir, m);
 
         await Task.Run(() =>
@@ -104,7 +127,7 @@ public sealed class Installer(ComponentStore store)
                 {
                     InstallOpti(ctx, pkg, o);
                     m.Opti = true;
-                    m.OptiTag = store.Opti?.Tag;
+                    m.OptiTag = o.OptiTag ?? store.Opti?.Tag;
                     m.Proxy = o.Proxy;
                 }
                 if (reshade is not null)
@@ -124,7 +147,7 @@ public sealed class Installer(ComponentStore store)
                 {
                     Place(ctx, mfg, Path.Combine(targetDir, ComponentStore.MfgFile));
                     m.Mfg = true;
-                    m.MfgTag = store.Mfg?.Tag ?? "local";
+                    m.MfgTag = o.MfgTag ?? store.Mfg?.Tag ?? ComponentStore.LocalMfgTag;
                 }
                 if (dlssNr)
                 {
@@ -402,7 +425,7 @@ public sealed class Installer(ComponentStore store)
     {
         var rel = ctx.Rel(full);
         var entry = ctx.M.BackupOf(rel);
-        var backupRel = entry?.Backup ?? rel.Replace("..", "_up");
+        var backupRel = entry?.Backup ?? FreeBackupName(ctx, rel.Replace("..", "_up"));
         var dest = Path.Combine(ctx.BackupDir, backupRel);
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         if (copy) File.Copy(full, dest, true);
@@ -411,14 +434,25 @@ public sealed class Installer(ComponentStore store)
         else entry.InstalledSha = null;
     }
 
+    /// <summary>A backup name no entry uses and no file holds, so a new backup never overwrites a saved original.</summary>
+    private static string FreeBackupName(Ctx ctx, string name)
+    {
+        var candidate = name;
+        for (var i = 1; File.Exists(Path.Combine(ctx.BackupDir, candidate))
+                        || ctx.M.Backups.Any(b => b.Backup.Equals(candidate, StringComparison.OrdinalIgnoreCase)); i++)
+            candidate = $"{name}.{i}";
+        return candidate;
+    }
+
     // ---------- uninstall / restore ----------
 
     public Task UninstallAsync(GameInfo game, string targetDir, CancellationToken ct) => Task.Run(() =>
     {
         targetDir = FileUtil.Normalize(targetDir);
         EnsureNotRunning(game.Root);
-        var m = InstallManifest.Load(targetDir) ?? throw new InvalidOperationException("No DLSS Updater install found here.");
-        var ctx = new Ctx(FileUtil.Normalize(Path.Combine(targetDir, m.RootRel)), targetDir, m);
+        var m = InstallManifest.Read(targetDir) ?? throw new InvalidOperationException("No DLSS Updater install found here.");
+        m.Contain(targetDir, game.Root);
+        var ctx = new Ctx(FileUtil.Normalize(game.Root), targetDir, m);
         try
         {
             foreach (var rel in m.Files) TryDelete(ctx.Full(rel));
@@ -439,8 +473,9 @@ public sealed class Installer(ComponentStore store)
     {
         targetDir = FileUtil.Normalize(targetDir);
         EnsureNotRunning(game.Root);
-        var m = InstallManifest.Load(targetDir) ?? throw new InvalidOperationException("No DLSS Updater install found here.");
-        var ctx = new Ctx(FileUtil.Normalize(Path.Combine(targetDir, m.RootRel)), targetDir, m);
+        var m = InstallManifest.Read(targetDir) ?? throw new InvalidOperationException("No DLSS Updater install found here.");
+        m.Contain(targetDir, game.Root);
+        var ctx = new Ctx(FileUtil.Normalize(game.Root), targetDir, m);
         try
         {
             foreach (var b in m.Backups.Where(b => b.Kind is "dlss" or "streamline").ToList())
@@ -470,6 +505,13 @@ public sealed class Installer(ComponentStore store)
         var src = Path.Combine(ctx.BackupDir, b.Backup);
         if (!File.Exists(src)) return;
         var dest = ctx.Full(b.Original);
+        // A game patch replaced the file we put in: the game's newer file stays and the stale original goes.
+        if (b.InstalledSha is { } ours && File.Exists(dest) && !string.Equals(HashCache.Get(dest), ours, StringComparison.OrdinalIgnoreCase))
+        {
+            File.Delete(src);
+            Log.Info($"  {b.Original}: changed by the game since, kept");
+            return;
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         File.Move(src, dest, true);
     }

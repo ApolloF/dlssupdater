@@ -254,7 +254,8 @@ public sealed class AddonServer
             Progress($"A game update replaced {string.Join(", ", reverted.Select(Path.GetFileName).Distinct())}; putting DLSS back");
             await EnsureStoreAsync(ct);
             var vm = Model(info);
-            var o = vm.UpdateOptions(m);
+            // Put back what was installed; moving OptiScaler or MFG Unlock to a new release takes a click in DLSS Updater.
+            var o = vm.UpdateOptions(m).KeepingInstalledVersions(m);
             if (vm.HasAntiCheat && vm.NeedsInjection(o) && !m.AntiCheatConfirmed)
                 throw new AddonException(-32000, $"{info.Name} uses {info.AntiCheat}; update it in DLSS Updater");
             await _services.Value.Installer.InstallAsync(info, target, o, null, ct);

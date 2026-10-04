@@ -155,8 +155,7 @@ public sealed partial class ComponentStore
         foreach (var r in await _gh.GetReleasesAsync(MfgRepo, 10, ct))
         {
             if (!Accept(r)) continue;
-            var addon = r.Assets.FirstOrDefault(a => a.Name.Equals(MfgFile, StringComparison.OrdinalIgnoreCase))
-                        ?? r.Assets.FirstOrDefault(a => a.Name.EndsWith(".addon64", StringComparison.OrdinalIgnoreCase));
+            var addon = r.Assets.FirstOrDefault(a => a.Name.Equals(MfgFile, StringComparison.OrdinalIgnoreCase));
             if (addon is null) continue;
             return new ReleaseInfo
             {
@@ -292,10 +291,14 @@ public sealed partial class ComponentStore
 
     // ---------- ensure (download + verify) ----------
 
-    /// <summary>Returns the folder holding the extracted OptiScaler-NR package.</summary>
-    public async Task<string> EnsureOptiAsync(IProgress<TransferProgress>? progress, CancellationToken ct)
+    /// <summary>
+    /// Returns the folder holding the extracted OptiScaler-NR package. <paramref name="tag"/> null means the newest
+    /// release; another tag must already be cached.
+    /// </summary>
+    public async Task<string> EnsureOptiAsync(string? tag, IProgress<TransferProgress>? progress, CancellationToken ct)
     {
-        var r = Opti ?? throw new InvalidOperationException("OptiScaler-NR release unknown (offline and nothing cached).");
+        var r = CachedOrNewest(Component.OptiScaler, tag, Opti, "OptiScaler-NR")
+                ?? throw new InvalidOperationException("OptiScaler-NR release unknown (offline and nothing cached).");
         var dir = TagDir(Component.OptiScaler, r.Tag);
         var pkg = Path.Combine(dir, "pkg");
         await _locks[Component.OptiScaler].WaitAsync(ct);
@@ -324,12 +327,18 @@ public sealed partial class ComponentStore
         finally { _locks[Component.OptiScaler].Release(); }
     }
 
-    /// <summary>Returns the path of the MFG Unlock addon.</summary>
-    public async Task<string> EnsureMfgAsync(IProgress<TransferProgress>? progress, CancellationToken ct)
+    /// <summary>
+    /// Returns the path of the MFG Unlock addon. <paramref name="tag"/> null means the newest release, "local" the
+    /// imported file; another tag must already be cached.
+    /// </summary>
+    public async Task<string> EnsureMfgAsync(string? tag, IProgress<TransferProgress>? progress, CancellationToken ct)
     {
         var local = Path.Combine(AppPaths.Components, MfgFile);
-        if (Mfg is null && File.Exists(local)) return local;
-        var r = Mfg ?? throw new InvalidOperationException("MFG Unlock release unknown (offline and nothing cached).");
+        if (tag == LocalMfgTag)
+            return File.Exists(local) ? local : throw new FileNotFoundException("The imported MFG Unlock add-on is gone.", local);
+        if (tag is null && Mfg is null && File.Exists(local)) return local;
+        var r = CachedOrNewest(Component.MfgUnlock, tag, Mfg, "MFG Unlock")
+                ?? throw new InvalidOperationException("MFG Unlock release unknown (offline and nothing cached).");
         var dir = TagDir(Component.MfgUnlock, r.Tag);
         var file = Path.Combine(dir, MfgFile);
         await _locks[Component.MfgUnlock].WaitAsync(ct);
@@ -346,6 +355,21 @@ public sealed partial class ComponentStore
             return file;
         }
         finally { _locks[Component.MfgUnlock].Release(); }
+    }
+
+    /// <summary>Tag recorded for an MFG Unlock add-on the user imported instead of a release.</summary>
+    public const string LocalMfgTag = "local";
+
+    /// <summary>True when that MFG Unlock version can be installed without a download.</summary>
+    public static bool HasMfg(string tag) =>
+        tag == LocalMfgTag ? File.Exists(Path.Combine(AppPaths.Components, MfgFile)) : IsCached(Component.MfgUnlock, tag);
+
+    private static ReleaseInfo? CachedOrNewest(Component c, string? tag, ReleaseInfo? newest, string label)
+    {
+        if (tag is null || (newest is not null && newest.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase))) return newest;
+        return IsCached(c, tag)
+            ? new ReleaseInfo { Tag = tag, FromCache = true }
+            : throw new InvalidOperationException($"{label} {tag} is no longer cached.");
     }
 
     /// <summary>
@@ -372,7 +396,7 @@ public sealed partial class ComponentStore
             foreach (var (name, url, _) in r.Files)
             {
                 var src = url;
-                if (!await GitHubClient.ExistsAsync(src, ct))
+                if (!await _gh.ExistsAsync(src, ct))
                 {
                     if (!latest) continue; // this SDK version has no such file
                     src = DlssRawUrl("main", name);
@@ -495,9 +519,14 @@ public sealed partial class ComponentStore
         throw new InvalidDataException("No zip archive found in the ReShade setup.");
     }
 
+    /// <summary>Checks a GitHub release asset against the digest GitHub published for it; no digest is a failure.</summary>
     private static async Task VerifyAsync(string file, string? sha256, CancellationToken ct)
     {
-        if (sha256 is null) return;
+        if (sha256 is null)
+        {
+            File.Delete(file);
+            throw new InvalidDataException($"{Path.GetFileName(file)}: GitHub published no SHA-256 digest for it, so it can't be verified.");
+        }
         var actual = await Task.Run(() => FileUtil.Sha256(file), ct);
         if (!actual.Equals(sha256, StringComparison.OrdinalIgnoreCase))
         {
