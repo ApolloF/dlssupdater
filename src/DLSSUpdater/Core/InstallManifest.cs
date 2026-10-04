@@ -8,9 +8,12 @@ public sealed class UnsafeManifestException(string targetDir, string detail)
 
 public sealed class BackupEntry
 {
-    /// <summary>Original location, relative to the game root.</summary>
+    /// <summary>Original location, an entry as in <see cref="InstallManifest.Files"/>.</summary>
     public string Original { get; set; } = "";
-    /// <summary>Backup location, relative to the backup folder.</summary>
+    /// <summary>
+    /// Backup location, relative to the backup folder. Records from 0ed78f7 may hold "&lt;original&gt;.N" as a full path
+    /// instead (an install folder on another drive than the game).
+    /// </summary>
     public string Backup { get; set; } = "";
     /// <summary>"dlss" for nvngx swaps, "file" for anything else we displaced.</summary>
     public string Kind { get; set; } = "file";
@@ -24,7 +27,7 @@ public sealed class InstallManifest
     public const string DirName = ".dlssupdater";
 
     public int Schema { get; set; } = 1;
-    /// <summary>Game root relative to the target dir (e.g. "..\..\..").</summary>
+    /// <summary>Game root relative to the target dir (e.g. "..\..\.."), or a full path when the two are on different drives.</summary>
     public string RootRel { get; set; } = ".";
     /// <summary>Proxy the game loads: OptiScaler's, or ReShade's in ReShade-only mode.</summary>
     public string? Proxy { get; set; }
@@ -49,9 +52,9 @@ public sealed class InstallManifest
     public Dictionary<string, string> ReShadeIni { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool AntiCheatConfirmed { get; set; }
 
-    /// <summary>Files we placed, relative to the game root.</summary>
+    /// <summary>Files we placed: relative to the game root, or <see cref="InstallTag"/>\… relative to the install folder (see <see cref="Entry"/>).</summary>
     public List<string> Files { get; set; } = [];
-    /// <summary>Folders we own, relative to the game root.</summary>
+    /// <summary>Folders we own, entries as in <see cref="Files"/>.</summary>
     public List<string> Dirs { get; set; } = [];
     public List<BackupEntry> Backups { get; set; } = [];
     public DateTime Updated { get; set; }
@@ -91,12 +94,46 @@ public sealed class InstallManifest
         }
     }
 
+    /// <summary>Starts an entry that is relative to the install folder. '|' can't occur in a Windows path, so no game file collides.</summary>
+    public const string InstallTag = "|install|";
+
+    /// <summary>
+    /// How <paramref name="full"/> is recorded: relative to the game root when it lies in the game, otherwise relative to
+    /// the install folder behind <see cref="InstallTag"/>. Unlike a path relative to the game root, that also works for an
+    /// install folder on another drive or network share.
+    /// </summary>
+    public static string Entry(string full, string targetDir, string gameRoot)
+    {
+        if (FileUtil.IsUnder(full, gameRoot)) return Path.GetRelativePath(gameRoot, full);
+        if (FileUtil.IsUnder(full, targetDir)) return InstallTag + Path.DirectorySeparatorChar + Path.GetRelativePath(targetDir, full);
+        throw new UnsafeManifestException(targetDir, $"{full} is outside {gameRoot} and {targetDir}");
+    }
+
+    /// <summary>
+    /// Where an entry points; <paramref name="gameRoot"/> is the root it was recorded against. Says nothing about whether
+    /// that is a safe place: see <see cref="Contain"/>.
+    /// </summary>
+    /// <exception cref="UnsafeManifestException">The entry is not a path DLSS Updater writes.</exception>
+    public static string Resolve(string entry, string targetDir, string gameRoot)
+    {
+        if (entry.StartsWith(InstallTag, StringComparison.Ordinal))
+        {
+            var rel = entry[InstallTag.Length..];
+            if (rel.Length > 1 && rel[0] is '\\' or '/' && IsRelative(rel[1..])) return Path.GetFullPath(Path.Combine(targetDir, rel[1..]));
+        }
+        // Full paths are what 0ed78f7 recorded for an install folder on another drive or share.
+        else if (IsFullPath(entry)) return Path.GetFullPath(entry);
+        else if (IsRelative(entry)) return Path.GetFullPath(Path.Combine(gameRoot, entry));
+        throw new UnsafeManifestException(targetDir, $"path \"{entry}\"");
+    }
+
     /// <summary>
     /// The manifest travels with the game folder, so every path in it is untrusted. Each one must stay inside
-    /// <paramref name="gameRoot"/> or the install folder (which may be a folder the user picked outside the game) and
-    /// not lead through a junction or symbolic link; owned folders must lie inside the install folder and backups
-    /// inside its backup folder. Entries are rebased onto <paramref name="gameRoot"/>, so the same install folder
-    /// reached from another game root still finds its originals.
+    /// <paramref name="gameRoot"/> or the install folder (which may be a folder the user picked outside the game, on
+    /// any drive or share) and not lead through a junction or symbolic link; owned folders must lie inside the install
+    /// folder and backups inside its backup folder. Entries are rewritten the way <see cref="Entry"/> records them for
+    /// <paramref name="gameRoot"/>, so the same install folder reached from another game root still finds its
+    /// originals, and records from earlier versions are brought up to date.
     /// </summary>
     /// <exception cref="UnsafeManifestException">Any entry breaks these rules; nothing is changed.</exception>
     public void Contain(string targetDir, string gameRoot)
@@ -107,45 +144,67 @@ public sealed class InstallManifest
         // Links are looked for below whichever of the two trusted folders holds the path.
         string Base(string full) => FileUtil.IsUnder(full, root) ? root : target;
         if (FileUtil.LinkBelow(Base(backupDir), backupDir) is { } link) throw new UnsafeManifestException(target, $"{link} is a link");
-        if (!IsRelative(RootRel)) throw new UnsafeManifestException(target, $"game root \"{RootRel}\"");
+        if (!IsRelative(RootRel) && !IsFullPath(RootRel)) throw new UnsafeManifestException(target, $"game root \"{RootRel}\"");
         if (Proxy is not null && !AppSettings.IsKnownProxy(Proxy)) throw new UnsafeManifestException(target, $"proxy \"{Proxy}\"");
         var oldRoot = FileUtil.Normalize(Path.Combine(target, RootRel));
 
         static bool StrictlyUnder(string full, string dir) =>
             FileUtil.IsUnder(full, dir) && !FileUtil.Normalize(full).Equals(dir, StringComparison.OrdinalIgnoreCase);
 
-        string Rebase(string rel, bool inTargetOnly)
+        string Check(string entry, bool inTargetOnly)
         {
-            if (!IsRelative(rel)) throw new UnsafeManifestException(target, $"path \"{rel}\"");
-            var full = Path.GetFullPath(Path.Combine(oldRoot, rel));
+            var full = Resolve(entry, target, oldRoot);
             var inside = StrictlyUnder(full, target) || (!inTargetOnly && StrictlyUnder(full, root));
-            if (!inside) throw new UnsafeManifestException(target, $"\"{rel}\" is outside {(inTargetOnly ? target : $"{root} and {target}")}");
-            if (FileUtil.LinkBelow(Base(full), full) is { } l) throw new UnsafeManifestException(target, $"\"{rel}\" leads through the link {l}");
-            return Path.GetRelativePath(root, full);
+            if (!inside) throw new UnsafeManifestException(target, $"\"{entry}\" is outside {(inTargetOnly ? target : $"{root} and {target}")}");
+            if (FileUtil.LinkBelow(Base(full), full) is { } l) throw new UnsafeManifestException(target, $"\"{entry}\" leads through the link {l}");
+            return full;
         }
 
-        var files = Files.Select(f => Rebase(f, inTargetOnly: false)).ToList();
-        var dirs = Dirs.Select(d => Rebase(d, inTargetOnly: true)).ToList();
-        if (dirs.Any(d => FileUtil.IsUnder(Path.Combine(root, d), DirFor(target))))
+        var files = Files.Select(f => Check(f, inTargetOnly: false)).ToList();
+        var dirs = Dirs.Select(d => Check(d, inTargetOnly: true)).ToList();
+        if (dirs.Any(d => FileUtil.IsUnder(d, DirFor(target))))
             throw new UnsafeManifestException(target, "an owned folder is DLSS Updater's own folder");
-        var originals = Backups.Select(b => Rebase(b.Original, inTargetOnly: false)).ToList();
-        foreach (var b in Backups)
+        var originals = Backups.Select(b => Check(b.Original, inTargetOnly: false)).ToList();
+        for (var i = 0; i < Backups.Count; i++)
         {
-            if (!IsRelative(b.Backup) || b.Backup.Split('\\', '/').Contains("..")) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\"");
-            var full = Path.GetFullPath(Path.Combine(backupDir, b.Backup));
-            if (!StrictlyUnder(full, backupDir)) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" is outside {backupDir}");
-            if (FileUtil.LinkBelow(target, full) is { } l) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" leads through the link {l}");
+            var b = Backups[i];
+            string full;
+            if (IsFullPath(b.Backup))
+            {
+                // 0ed78f7 joined a full original path onto the backup folder, which left the original beside itself as "<name>.N".
+                full = Path.GetFullPath(b.Backup);
+                if (!IsSideBackup(full, originals[i])) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\"");
+            }
+            else
+            {
+                if (!IsRelative(b.Backup) || b.Backup.Split('\\', '/').Contains("..")) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\"");
+                full = Path.GetFullPath(Path.Combine(backupDir, b.Backup));
+                if (!StrictlyUnder(full, backupDir)) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" is outside {backupDir}");
+            }
+            if (FileUtil.LinkBelow(Base(full), full) is { } l) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" leads through the link {l}");
         }
 
-        Files = files;
-        Dirs = dirs;
-        for (var i = 0; i < Backups.Count; i++) Backups[i].Original = originals[i];
+        Files = files.Select(f => Entry(f, target, root)).ToList();
+        Dirs = dirs.Select(d => Entry(d, target, root)).ToList();
+        for (var i = 0; i < Backups.Count; i++) Backups[i].Original = Entry(originals[i], target, root);
         RootRel = Path.GetRelativePath(target, root);
     }
+
+    /// <summary>"&lt;original&gt;.N" in the original's own folder.</summary>
+    private static bool IsSideBackup(string full, string original) =>
+        full.Length > original.Length + 1
+        && full.StartsWith(original + ".", StringComparison.OrdinalIgnoreCase)
+        && full[(original.Length + 1)..].All(char.IsAsciiDigit);
 
     /// <summary>Relative, with no drive or stream (':'). ".." parts are fine: where the path ends up is checked separately.</summary>
     private static bool IsRelative(string? rel) =>
         !string.IsNullOrWhiteSpace(rel) && !Path.IsPathRooted(rel) && !rel.Contains(':');
+
+    /// <summary>A drive or UNC path with no stream (':') after its root. Device paths (\\?\, \\.\) are not accepted.</summary>
+    private static bool IsFullPath(string? path) =>
+        !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path)
+        && !(path.Length > 2 && path[0] is '\\' or '/' && path[1] is '\\' or '/' && path[2] is '?' or '.')
+        && !path[Path.GetPathRoot(path)!.Length..].Contains(':');
 
     public void Save(string targetDir)
     {

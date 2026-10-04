@@ -67,11 +67,11 @@ public sealed class Installer(ComponentStore store)
 
     private sealed record Ctx(string Root, string Target, InstallManifest M)
     {
-        public string Rel(string full) => Path.GetRelativePath(Root, full);
+        public string Rel(string full) => InstallManifest.Entry(full, Target, Root);
         /// <summary>Entries live in the game or in the install folder, which the user may have picked outside the game.</summary>
         public string Full(string rel)
         {
-            var full = Path.GetFullPath(Path.Combine(Root, rel));
+            var full = InstallManifest.Resolve(rel, Target, Root);
             return FileUtil.IsUnder(full, Root) || FileUtil.IsUnder(full, Target)
                 ? full
                 : throw new UnsafeManifestException(Target, $"\"{rel}\" is outside {Root} and {Target}");
@@ -428,7 +428,7 @@ public sealed class Installer(ComponentStore store)
     {
         var rel = ctx.Rel(full);
         var entry = ctx.M.BackupOf(rel);
-        var backupRel = entry?.Backup ?? FreeBackupName(ctx, rel.Replace("..", "_up"));
+        var backupRel = entry?.Backup ?? FreeBackupName(ctx, BackupName(rel));
         var dest = Path.Combine(ctx.BackupDir, backupRel);
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         if (copy) File.Copy(full, dest, true);
@@ -436,6 +436,12 @@ public sealed class Installer(ComponentStore store)
         if (entry is null) ctx.M.Backups.Add(new BackupEntry { Original = rel, Backup = backupRel, Kind = kind });
         else entry.InstalledSha = null;
     }
+
+    /// <summary>The entry as a path inside the backup folder: install-folder entries go under "_install".</summary>
+    private static string BackupName(string rel) =>
+        rel.StartsWith(InstallManifest.InstallTag, StringComparison.Ordinal)
+            ? "_install" + rel[InstallManifest.InstallTag.Length..]
+            : rel.Replace("..", "_up");
 
     /// <summary>A backup name no entry uses and no file holds, so a new backup never overwrites a saved original.</summary>
     private static string FreeBackupName(Ctx ctx, string name)
