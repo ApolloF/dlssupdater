@@ -85,3 +85,7 @@ iscc /DAppVersion=1.5.1 installer\DLSSUpdater.iss
 Tagging `v*` (matching `<Version>` in the csproj) builds both on GitHub Actions and attaches them to a release.
 
 `DLSSU_INTEGRATION=1` enables a test that downloads the real releases (including ReShade from reshade.me) and installs them into a temporary folder.
+
+## License
+
+DLSS Updater is released under the [MIT License](LICENSE). The third-party files it downloads and installs (OptiScaler, MFG Unlock, NVIDIA DLSS and Streamline, ReShade) and your own `nvngx_dlssnr.dll` keep their own licences.
