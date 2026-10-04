@@ -12,6 +12,10 @@ It pulls the latest releases of:
 
 and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll`.
 
+> **Single-player games only.** Replacing or injecting DLLs can trigger anti-cheat in online games. DLSS Updater flags games with known anti-cheat (EAC, BattlEye, GameGuard, …) and asks before touching them, but no check is complete. For online games, use the DLSS override in the NVIDIA app instead.
+>
+> Not affiliated with or endorsed by NVIDIA. NVIDIA and DLSS are trademarks of NVIDIA Corporation, used here only to describe compatibility. Everything is downloaded from the official sources listed above; nothing from NVIDIA is bundled.
+
 ## Download
 
 Each [release](https://github.com/ApolloF/dlssupdater/releases/latest) has two builds of the same app:
@@ -68,6 +72,10 @@ DLSS Updater also works as an add-on for [Seaglass](https://github.com/ApolloF/S
 To connect them, use *Settings → General → Connect to Seaglass*, or run `DLSSUpdater.exe --register-addon`. This writes `%LOCALAPPDATA%\Seaglass\addons\dlssupdater\addon.json` (or WaterLauncher's folder while an older WaterLauncher hasn't updated to Seaglass yet). Then turn it on in Seaglass under *Settings → Add-ons*. Seaglass pins this exe's hash, so it asks again after an update.
 
 Seaglass runs `DLSSUpdater.exe --addon`, which has no window and speaks JSON-RPC on stdin/stdout ([protocol](https://github.com/ApolloF/Seaglass/blob/feature/dlss-addon/docs/addon-protocol.md)). It never runs elevated. Games with anti-cheat that you haven't confirmed in DLSS Updater are left alone.
+
+## Support
+
+DLSS Updater is free. If it's useful to you, [sponsor it on GitHub](https://github.com/sponsors/ApolloF) or leave a one-off tip on [Ko-fi](https://ko-fi.com/apollof).
 
 ## Build
 
