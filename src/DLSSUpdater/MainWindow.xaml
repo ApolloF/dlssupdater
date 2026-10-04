@@ -1040,6 +1040,7 @@
                         </Border>
 
                         <TextBlock Text="Data, cache and log: %LocalAppData%\DLSSUpdater" Style="{StaticResource MutedText}" FontSize="11.5" Margin="0,16,0,0" />
+                        <TextBlock Text="Not affiliated with or endorsed by NVIDIA. NVIDIA and DLSS are trademarks of NVIDIA Corporation, used here only to describe compatibility." Style="{StaticResource MutedText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0" />
                     </StackPanel>
                 </ScrollViewer>
                 </DockPanel>
