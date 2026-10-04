@@ -494,4 +494,223 @@ public class InstallerTests : IDisposable
         var o = new InstallOptions { Mode = InstallMode.ReShadeOnly, Mfg = true };
         await Assert.ThrowsAsync<InvalidOperationException>(() => new Installer(_store).InstallAsync(Game(), _target, o, null, default));
     }
+
+    // ---------- review 2026-10: crafted, moved or broken install records ----------
+
+    private string Engine(string file) => Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64", file);
+
+    /// <summary>A folder next to the game that no install record may reach.</summary>
+    private string Victim()
+    {
+        var v = Path.Combine(_tmp, "Victim");
+        Write(Path.Combine(v, "keep.txt"), "precious");
+        return v;
+    }
+
+    private void EditManifest(Action<InstallManifest> edit)
+    {
+        var m = InstallManifest.Read(_target)!;
+        edit(m);
+        m.Save(_target);
+    }
+
+    private IEnumerable<string> BackupContents() =>
+        Directory.EnumerateFiles(InstallManifest.BackupDirFor(_target), "*", SearchOption.AllDirectories).Select(File.ReadAllText);
+
+    private static void Junction(string link, string target)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        p.WaitForExit();
+        Assert.Equal(0, p.ExitCode);
+    }
+
+    [Theory]
+    [InlineData("dir-up")]
+    [InlineData("dir-absolute")]
+    [InlineData("dir-outside-install-folder")]
+    [InlineData("root-up")]
+    [InlineData("file-up")]
+    [InlineData("backup-original-up")]
+    [InlineData("backup-escapes-backup-folder")]
+    public async Task CraftedManifest_UninstallRefuses_AndTouchesNothingOutside(string attack)
+    {
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        Write(Path.Combine(InstallManifest.BackupDirFor(_target), "evil.dll"), "EVIL");
+        EditManifest(m =>
+        {
+            switch (attack)
+            {
+                case "dir-up": m.Dirs.Add(@"..\Victim"); break;
+                case "dir-absolute": m.Dirs.Add(victim); break;
+                case "dir-outside-install-folder": m.Dirs.Add("Engine"); break;
+                case "root-up": m.RootRel = @"..\..\..\.."; m.Dirs.Add("Victim"); break;
+                case "file-up": m.Files.Add(@"..\Victim\keep.txt"); break;
+                case "backup-original-up": m.Backups.Add(new BackupEntry { Original = @"..\Victim\evil.dll", Backup = "evil.dll" }); break;
+                case "backup-escapes-backup-folder": m.Backups.Add(new BackupEntry { Original = "Game.exe", Backup = @"..\..\..\..\..\..\Victim\keep.txt" }); break;
+            }
+        });
+        var before = Snapshot();
+
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.UninstallAsync(Game(), _target, default));
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.RestoreDlssAsync(Game(), _target, default));
+
+        Assert.Equal(["keep.txt"], Directory.EnumerateFiles(victim).Select(Path.GetFileName));
+        Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task CraftedManifest_LaunchStyleReinstall_RefusesProxyOutsideTheGame()
+    {
+        // Seaglass's beforeLaunch reinstalls from the record: its proxy and files must not reach outside either.
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        EditManifest(m =>
+        {
+            m.Proxy = @"..\..\..\..\Victim\keep.txt";
+            m.Files.Add(@"..\Victim\keep.txt");
+        });
+
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default));
+        Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            installer.InstallAsync(Game(), _target, new InstallOptions { Opti = true, Proxy = @"..\..\evil.dll" }, null, default));
+    }
+
+    [Fact]
+    public async Task ManifestPathThroughJunction_IsRefused()
+    {
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        var link = Path.Combine(_target, "Link");
+        Junction(link, victim);
+        try
+        {
+            EditManifest(m => m.Files.Add(@"Game\Binaries\Win64\Link\keep.txt"));
+
+            await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.UninstallAsync(Game(), _target, default));
+            Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(link); // removes the junction only; a recursive delete of the temp folder can't
+        }
+    }
+
+    [Fact]
+    public async Task SameFolderFromNarrowerRoot_IsRefused_OriginalsStayRestorable()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+
+        // "Add game folder" picked Game\Game: the SR backup at Game\Engine is out of its reach.
+        var inner = GameScanner.Inspect(new GameEntry("Game", Path.Combine(_root, "Game"), "Manual"));
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.InstallAsync(inner, _target, new InstallOptions { Dlss = true }, null, default));
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task SameFolderFromWiderRoot_RebasesRecord_RestoreReturnsOriginals()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        var inner = GameScanner.Inspect(new GameEntry("Game", Path.Combine(_root, "Game"), "Manual"));
+        await installer.InstallAsync(inner, _target, new InstallOptions { Dlss = true }, null, default);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task UnreadableManifest_InstallRefuses_BackupsSurvive()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.WriteAllText(InstallManifest.PathFor(_target), "{ truncated");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default));
+        Assert.Contains("OLD-FG", BackupContents());
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+        Assert.Null(InstallManifest.Load(_target)); // display code still just sees "not installed"
+    }
+
+    [Fact]
+    public async Task LostManifest_NewInstallNeverOverwritesSavedOriginals()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.Delete(InstallManifest.PathFor(_target));
+
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        Assert.Contains("OLD-FG", BackupContents());
+        Assert.Contains("OLD-SR", BackupContents());
+    }
+
+    [Fact]
+    public async Task LaunchReinstall_KeepsInstalledOptiAndMfgVersions()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        SeedOpti("v10.0.0", "OPTI-2");
+        SeedMfg("2.0", "MFG-2");
+
+        var m = InstallManifest.Read(_target)!;
+        await installer.InstallAsync(Game(), _target, Full.KeepingInstalledVersions(m), null, default);
+        Assert.Equal("OPTI-1", T("dxgi.dll"));
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("v9.9.9", InstallManifest.Read(_target)!.OptiTag);
+        Assert.Equal("1.0", InstallManifest.Read(_target)!.MfgTag);
+
+        // The installed release left the cache: OptiScaler is left alone rather than upgraded.
+        Directory.Delete(ComponentStore.TagDir(Component.OptiScaler, "v9.9.9"), true);
+        var o = Full.KeepingInstalledVersions(InstallManifest.Read(_target)!);
+        Assert.False(o.Opti);
+        Assert.True(o.Mfg);
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("OPTI-1", T("dxgi.dll"));
+
+        // A click in DLSS Updater (no pin) moves to the newest release.
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("OPTI-2", T("dxgi.dll"));
+        Assert.Equal("MFG-2", T(ComponentStore.MfgFile));
+    }
+
+    [Fact]
+    public async Task RestoreDlss_KeepsAFileTheGameUpdatedSince()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "GAME-PATCH-3.8");
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal("GAME-PATCH-3.8", T("nvngx_dlssg.dll"));
+        Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public void GitHubToken_IsSavedEncrypted_AndPlainTextIsMigrated()
+    {
+        const string token = "github_pat_TEST_ONLY_not_a_real_token";
+        new AppSettings { GitHubToken = token }.Save();
+        Assert.DoesNotContain(token, File.ReadAllText(AppPaths.SettingsFile));
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
+
+        // settings.json from 1.5.1: the plain token is read, then rewritten encrypted.
+        File.WriteAllText(AppPaths.SettingsFile, $"{{ \"GitHubToken\": \"{token}\" }}");
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
+        Assert.DoesNotContain(token, File.ReadAllText(AppPaths.SettingsFile));
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
+    }
 }
