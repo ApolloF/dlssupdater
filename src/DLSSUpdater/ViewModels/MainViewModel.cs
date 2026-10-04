@@ -150,7 +150,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
-        S.Store.AutoImport();
+        if (Demo.Active) Demo.Seed(S.Store);
+        else S.Store.AutoImport();
         await RefreshLocalComponentsAsync();
 
         var cached = GameScanner.LoadCache();
@@ -192,8 +193,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task CheckUpdatesCore()
     {
-        Gh.Token = S.Settings.GitHubToken;
-        await S.Store.RefreshAsync(_cts.Token);
+        if (!Demo.Active)
+        {
+            Gh.Token = S.Settings.GitHubToken;
+            await S.Store.RefreshAsync(_cts.Token);
+        }
         var s = S.Store;
         Online = s.Opti is { FromCache: false } || s.Dlss is { FromCache: false } || s.Mfg is { FromCache: false };
         OptiVersion = s.Opti is null ? "—" : s.Opti.Tag + (s.Opti.Prerelease ? " pre" : "");
@@ -207,7 +211,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         CountUpdates();
         await RefreshLocalComponentsAsync();
-        await CheckCompatAsync();
+        if (!Demo.Active) await CheckCompatAsync();
         Log.Info($"Latest: OptiScaler-NR {OptiVersion} · DLSS {DlssVersion} · MFG Unlock {MfgVersion}{(Online ? "" : " (offline)")}");
     }
 
@@ -217,7 +221,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ScanCore()
     {
         var progress = new Progress<int>(p => Status = $"Scanning games  {p}%");
-        var games = await GameScanner.ScanAsync(S.Settings, progress, _cts.Token);
+        var games = Demo.Active ? Demo.Games : await GameScanner.ScanAsync(S.Settings, progress, _cts.Token);
         ApplyScan(games);
         Log.Info($"Found {games.Count} games, {games.Count(g => g.Dlss.Count > 0)} with DLSS");
     }
@@ -500,7 +504,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task RescanOne(GameViewModel g)
     {
-        var info = await Task.Run(() => GameScanner.Inspect(new GameEntry(g.Name, g.Root, g.Source)));
+        var info = Demo.Active ? Demo.Find(g.Root)! : await Task.Run(() => GameScanner.Inspect(new GameEntry(g.Name, g.Root, g.Source)));
         g.Load(info);
         GamesView.Refresh();
         CountUpdates();
