@@ -68,10 +68,13 @@ public sealed class Installer(ComponentStore store)
     private sealed record Ctx(string Root, string Target, InstallManifest M)
     {
         public string Rel(string full) => Path.GetRelativePath(Root, full);
+        /// <summary>Entries live in the game or in the install folder, which the user may have picked outside the game.</summary>
         public string Full(string rel)
         {
             var full = Path.GetFullPath(Path.Combine(Root, rel));
-            return FileUtil.IsUnder(full, Root) ? full : throw new UnsafeManifestException(Target, $"\"{rel}\" is outside {Root}");
+            return FileUtil.IsUnder(full, Root) || FileUtil.IsUnder(full, Target)
+                ? full
+                : throw new UnsafeManifestException(Target, $"\"{rel}\" is outside {Root} and {Target}");
         }
         public string BackupDir => InstallManifest.BackupDirFor(Target);
     }
@@ -455,13 +458,27 @@ public sealed class Installer(ComponentStore store)
         var ctx = new Ctx(FileUtil.Normalize(game.Root), targetDir, m);
         try
         {
-            foreach (var rel in m.Files) TryDelete(ctx.Full(rel));
-            foreach (var rel in m.Dirs)
+            // Every step is recorded as soon as it is done, so a retry after a failure part-way (a locked file)
+            // carries on where it stopped and never deletes an original that was already put back.
+            foreach (var rel in m.Files.ToList())
+            {
+                TryDelete(ctx.Full(rel));
+                m.Files.Remove(rel);
+                m.Save(targetDir);
+            }
+            foreach (var rel in m.Dirs.ToList())
             {
                 var d = ctx.Full(rel);
                 if (Directory.Exists(d)) Directory.Delete(d, true);
+                m.Dirs.Remove(rel);
+                m.Save(targetDir);
             }
-            foreach (var b in m.Backups) Restore(ctx, b);
+            foreach (var b in m.Backups.ToList())
+            {
+                Restore(ctx, b);
+                m.Backups.Remove(b);
+                m.Save(targetDir);
+            }
             foreach (var log in LogFiles) TryDelete(Path.Combine(targetDir, log));
             Directory.Delete(InstallManifest.DirFor(targetDir), true);
             Log.Info($"{game.Name}: uninstalled, originals restored");

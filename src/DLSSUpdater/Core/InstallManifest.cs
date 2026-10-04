@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace DLSSUpdater.Core;
 
 public sealed class UnsafeManifestException(string targetDir, string detail)
-    : Exception($"DLSS Updater's install record in {targetDir} points outside the game ({detail}). Nothing was changed.");
+    : Exception($"DLSS Updater's install record in {targetDir} points outside the game and install folders ({detail}). Nothing was changed.");
 
 public sealed class BackupEntry
 {
@@ -93,9 +93,10 @@ public sealed class InstallManifest
 
     /// <summary>
     /// The manifest travels with the game folder, so every path in it is untrusted. Each one must stay inside
-    /// <paramref name="gameRoot"/> and not lead through a junction or symbolic link; owned folders must lie inside
-    /// the install folder and backups inside its backup folder. Entries are rebased onto <paramref name="gameRoot"/>,
-    /// so the same install folder reached from another game root still finds its originals.
+    /// <paramref name="gameRoot"/> or the install folder (which may be a folder the user picked outside the game) and
+    /// not lead through a junction or symbolic link; owned folders must lie inside the install folder and backups
+    /// inside its backup folder. Entries are rebased onto <paramref name="gameRoot"/>, so the same install folder
+    /// reached from another game root still finds its originals.
     /// </summary>
     /// <exception cref="UnsafeManifestException">Any entry breaks these rules; nothing is changed.</exception>
     public void Contain(string targetDir, string gameRoot)
@@ -103,33 +104,36 @@ public sealed class InstallManifest
         var target = FileUtil.Normalize(targetDir);
         var root = FileUtil.Normalize(gameRoot);
         var backupDir = BackupDirFor(target);
-        if (!FileUtil.IsUnder(target, root)) throw new UnsafeManifestException(target, $"the install folder is outside the game folder {root}");
-        if (FileUtil.LinkBelow(root, backupDir) is { } link) throw new UnsafeManifestException(target, $"{link} is a link");
-        if (!IsSafeRel(RootRel, allowUp: true)) throw new UnsafeManifestException(target, $"game root \"{RootRel}\"");
+        // Links are looked for below whichever of the two trusted folders holds the path.
+        string Base(string full) => FileUtil.IsUnder(full, root) ? root : target;
+        if (FileUtil.LinkBelow(Base(backupDir), backupDir) is { } link) throw new UnsafeManifestException(target, $"{link} is a link");
+        if (!IsRelative(RootRel)) throw new UnsafeManifestException(target, $"game root \"{RootRel}\"");
         if (Proxy is not null && !AppSettings.IsKnownProxy(Proxy)) throw new UnsafeManifestException(target, $"proxy \"{Proxy}\"");
         var oldRoot = FileUtil.Normalize(Path.Combine(target, RootRel));
 
-        string Rebase(string rel, string inside)
+        static bool StrictlyUnder(string full, string dir) =>
+            FileUtil.IsUnder(full, dir) && !FileUtil.Normalize(full).Equals(dir, StringComparison.OrdinalIgnoreCase);
+
+        string Rebase(string rel, bool inTargetOnly)
         {
-            if (!IsSafeRel(rel, allowUp: false)) throw new UnsafeManifestException(target, $"path \"{rel}\"");
+            if (!IsRelative(rel)) throw new UnsafeManifestException(target, $"path \"{rel}\"");
             var full = Path.GetFullPath(Path.Combine(oldRoot, rel));
-            if (!FileUtil.IsUnder(full, inside) || FileUtil.Normalize(full).Equals(inside, StringComparison.OrdinalIgnoreCase))
-                throw new UnsafeManifestException(target, $"\"{rel}\" is outside {inside}");
-            if (FileUtil.LinkBelow(root, full) is { } l) throw new UnsafeManifestException(target, $"\"{rel}\" leads through the link {l}");
+            var inside = StrictlyUnder(full, target) || (!inTargetOnly && StrictlyUnder(full, root));
+            if (!inside) throw new UnsafeManifestException(target, $"\"{rel}\" is outside {(inTargetOnly ? target : $"{root} and {target}")}");
+            if (FileUtil.LinkBelow(Base(full), full) is { } l) throw new UnsafeManifestException(target, $"\"{rel}\" leads through the link {l}");
             return Path.GetRelativePath(root, full);
         }
 
-        var files = Files.Select(f => Rebase(f, root)).ToList();
-        var dirs = Dirs.Select(d => Rebase(d, target)).ToList();
+        var files = Files.Select(f => Rebase(f, inTargetOnly: false)).ToList();
+        var dirs = Dirs.Select(d => Rebase(d, inTargetOnly: true)).ToList();
         if (dirs.Any(d => FileUtil.IsUnder(Path.Combine(root, d), DirFor(target))))
             throw new UnsafeManifestException(target, "an owned folder is DLSS Updater's own folder");
-        var originals = Backups.Select(b => Rebase(b.Original, root)).ToList();
+        var originals = Backups.Select(b => Rebase(b.Original, inTargetOnly: false)).ToList();
         foreach (var b in Backups)
         {
-            if (!IsSafeRel(b.Backup, allowUp: false)) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\"");
+            if (!IsRelative(b.Backup) || b.Backup.Split('\\', '/').Contains("..")) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\"");
             var full = Path.GetFullPath(Path.Combine(backupDir, b.Backup));
-            if (!FileUtil.IsUnder(full, backupDir) || FileUtil.Normalize(full).Equals(backupDir, StringComparison.OrdinalIgnoreCase))
-                throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" is outside {backupDir}");
+            if (!StrictlyUnder(full, backupDir)) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" is outside {backupDir}");
             if (FileUtil.LinkBelow(target, full) is { } l) throw new UnsafeManifestException(target, $"backup \"{b.Backup}\" leads through the link {l}");
         }
 
@@ -139,13 +143,9 @@ public sealed class InstallManifest
         RootRel = Path.GetRelativePath(target, root);
     }
 
-    /// <summary>Relative, no drive or stream (':'), and no ".." unless <paramref name="allowUp"/> (then only "." / ".." parts).</summary>
-    private static bool IsSafeRel(string? rel, bool allowUp)
-    {
-        if (string.IsNullOrWhiteSpace(rel) || Path.IsPathRooted(rel) || rel.Contains(':')) return false;
-        var parts = rel.Split('\\', '/');
-        return allowUp ? parts.All(p => p is "." or "..") : !parts.Any(p => p == "..");
-    }
+    /// <summary>Relative, with no drive or stream (':'). ".." parts are fine: where the path ends up is checked separately.</summary>
+    private static bool IsRelative(string? rel) =>
+        !string.IsNullOrWhiteSpace(rel) && !Path.IsPathRooted(rel) && !rel.Contains(':');
 
     public void Save(string targetDir)
     {

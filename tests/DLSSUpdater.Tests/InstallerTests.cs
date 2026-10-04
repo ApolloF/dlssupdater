@@ -78,9 +78,9 @@ public class InstallerTests : IDisposable
         _store.Dlss = r;
     }
 
-    private Dictionary<string, string> Snapshot() =>
-        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
-            .ToDictionary(f => Path.GetRelativePath(_root, f), File.ReadAllText, StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> Snapshot(string? dir = null) =>
+        Directory.EnumerateFiles(dir ?? _root, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => Path.GetRelativePath(dir ?? _root, f), File.ReadAllText, StringComparer.OrdinalIgnoreCase);
 
     private GameInfo Game() => GameScanner.Inspect(new GameEntry("Game", _root, "Manual"));
 
@@ -697,6 +697,95 @@ public class InstallerTests : IDisposable
         await installer.RestoreDlssAsync(Game(), _target, default);
         Assert.Equal("GAME-PATCH-3.8", T("nvngx_dlssg.dll"));
         Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+    }
+
+    /// <summary>An install folder the user picked outside the game (the folder dialog allows any folder).</summary>
+    private string Elsewhere()
+    {
+        var dir = Path.Combine(_tmp, "Elsewhere");
+        Write(Path.Combine(dir, "dxgi.dll"), "ELSEWHERE-MOD");
+        return dir;
+    }
+
+    [Fact]
+    public async Task InstallFolderOutsideGame_InstallUpdateUninstall_RoundTrip()
+    {
+        var elsewhere = Elsewhere();
+        var before = Snapshot();
+        var beforeElsewhere = Snapshot(elsewhere);
+        var installer = new Installer(_store);
+
+        await installer.InstallAsync(Game(), elsewhere, Full, null, default);
+        Assert.Equal("OPTI-1", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.Equal("MFG-1", File.ReadAllText(Path.Combine(elsewhere, ComponentStore.MfgFile)));
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+
+        SeedOpti("v10.0.0", "OPTI-2");
+        await installer.InstallAsync(Game(), elsewhere, Full, null, default);
+        Assert.Equal("OPTI-2", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+
+        await installer.UninstallAsync(Game(), elsewhere, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+        Assert.Equal(beforeElsewhere.OrderBy(k => k.Key), Snapshot(elsewhere).OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(elsewhere)));
+    }
+
+    [Fact]
+    public async Task InstallFolderOutsideGame_RecordWrittenByEarlierVersion_StillUninstalls()
+    {
+        // The record 1.5.1 writes for such a folder: game root and our files reached through "..".
+        var elsewhere = Elsewhere();
+        var savedMod = Path.Combine(InstallManifest.BackupDirFor(elsewhere), @"_up\Elsewhere\dxgi.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(savedMod)!);
+        File.Move(Path.Combine(elsewhere, "dxgi.dll"), savedMod);
+        Write(Path.Combine(elsewhere, "dxgi.dll"), "OPTI-1");
+        Write(Path.Combine(elsewhere, @"OptiScaler\libxess.dll"), "XESS");
+        Write(Path.Combine(InstallManifest.BackupDirFor(elsewhere), @"Game\Binaries\Win64\nvngx_dlssg.dll"), "OLD-FG");
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "NEW-nvngx_dlssg.dll");
+        File.WriteAllText(InstallManifest.PathFor(elsewhere), """
+            {
+              "Schema": 1,
+              "RootRel": "..\\Game",
+              "Proxy": "dxgi.dll",
+              "Mode": "OptiScaler",
+              "Opti": true,
+              "Dlss": true,
+              "Files": [ "..\\Elsewhere\\dxgi.dll" ],
+              "Dirs": [ "..\\Elsewhere\\OptiScaler" ],
+              "Backups": [
+                { "Original": "..\\Elsewhere\\dxgi.dll", "Backup": "_up\\Elsewhere\\dxgi.dll", "Kind": "file" },
+                { "Original": "Game\\Binaries\\Win64\\nvngx_dlssg.dll", "Backup": "Game\\Binaries\\Win64\\nvngx_dlssg.dll", "Kind": "dlss" }
+              ]
+            }
+            """);
+
+        var m = InstallManifest.Read(elsewhere)!;
+        m.Contain(elsewhere, _root);
+        Assert.Equal([@"..\Elsewhere\dxgi.dll"], m.Files);
+        Assert.Equal(@"..\Elsewhere\dxgi.dll", m.BackupOf(@"..\Elsewhere\dxgi.dll")!.Original);
+
+        await new Installer(_store).UninstallAsync(Game(), elsewhere, default);
+        Assert.Equal("ELSEWHERE-MOD", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.False(Directory.Exists(Path.Combine(elsewhere, "OptiScaler")));
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(elsewhere)));
+    }
+
+    [Fact]
+    public async Task Uninstall_FailsPartWay_RetryKeepsOriginalsAlreadyRestored()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+
+        // The game's SR dll is held open: its restore fails after dxgi.dll's original is already back.
+        using (new FileStream(Engine("nvngx_dlss.dll"), FileMode.Open, FileAccess.Read, FileShare.Read))
+            await Assert.ThrowsAnyAsync<Exception>(() => installer.UninstallAsync(Game(), _target, default));
+        Assert.Equal("OTHER-MOD", T("dxgi.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(_target)));
     }
 
     [Fact]
