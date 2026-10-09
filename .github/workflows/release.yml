@@ -40,7 +40,7 @@ jobs:
           & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" installer\DLSSUpdater.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: DLSSUpdater
           path: |
