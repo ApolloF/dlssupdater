@@ -153,19 +153,29 @@ public sealed class AddonServer
     {
         var m = InstallManifest.Load(targetDir);
         if (m is null) return [];
-        var root = FileUtil.Normalize(Path.Combine(targetDir, m.RootRel));
-        var dlssNames = ComponentStore.DlssFiles;
-        var out_ = new List<string>();
-        foreach (var b in m.Backups.Where(b => b.Kind == "dlss" && b.InstalledSha is not null))
+        try
         {
-            var path = Path.Combine(root, b.Original);
-            if (!File.Exists(path) || !string.Equals(HashCache.Get(path), b.InstalledSha, StringComparison.OrdinalIgnoreCase))
-                out_.Add(b.Original);
+            var root = FileUtil.Normalize(Path.Combine(targetDir, m.RootRel));
+            string Full(string entry) => InstallManifest.Resolve(entry, targetDir, root);
+            var dlssNames = ComponentStore.DlssFiles;
+            var out_ = new List<string>();
+            foreach (var b in m.Backups.Where(b => b.Kind == "dlss" && b.InstalledSha is not null))
+            {
+                var path = Full(b.Original);
+                if (!File.Exists(path) || !string.Equals(HashCache.Get(path), b.InstalledSha, StringComparison.OrdinalIgnoreCase))
+                    out_.Add(b.Original);
+            }
+            foreach (var rel in m.Files.Where(f => dlssNames.Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)))
+                if (!File.Exists(Full(rel)) && !out_.Contains(rel, StringComparer.OrdinalIgnoreCase))
+                    out_.Add(rel);
+            return out_;
         }
-        foreach (var rel in m.Files.Where(f => dlssNames.Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)))
-            if (!File.Exists(Path.Combine(root, rel)) && !out_.Contains(rel, StringComparer.OrdinalIgnoreCase))
-                out_.Add(rel);
-        return out_;
+        catch (UnsafeManifestException ex)
+        {
+            // Display only: an install or uninstall reports the same record properly.
+            Log.Error(ex.Message);
+            return [];
+        }
     }
 
     private static string Short(Version v) => $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}";
@@ -254,7 +264,8 @@ public sealed class AddonServer
             Progress($"A game update replaced {string.Join(", ", reverted.Select(Path.GetFileName).Distinct())}; putting DLSS back");
             await EnsureStoreAsync(ct);
             var vm = Model(info);
-            var o = vm.UpdateOptions(m);
+            // Put back what was installed; moving OptiScaler or MFG Unlock to a new release takes a click in DLSS Updater.
+            var o = vm.UpdateOptions(m).KeepingInstalledVersions(m);
             if (vm.HasAntiCheat && vm.NeedsInjection(o) && !m.AntiCheatConfirmed)
                 throw new AddonException(-32000, $"{info.Name} uses {info.AntiCheat}; update it in DLSS Updater");
             await _services.Value.Installer.InstallAsync(info, target, o, null, ct);

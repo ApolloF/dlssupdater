@@ -10,6 +10,7 @@ using DLSSUpdater.Core;
 using DLSSUpdater.Scan;
 using DLSSUpdater.Views;
 using Microsoft.Win32;
+using Component = DLSSUpdater.Core.Component;
 
 namespace DLSSUpdater.ViewModels;
 
@@ -28,6 +29,11 @@ public sealed partial class MainViewModel : ObservableObject
         S = new Services { Settings = settings, Store = store, Installer = new Installer(store) };
         Gh = gh;
         SettingsVm = new SettingsViewModel(this);
+        OptiNews = new ReleaseNewsViewModel(Component.OptiScaler, "OptiScaler-NR", settings);
+        DlssNews = new ReleaseNewsViewModel(Component.Dlss, "DLSS", settings);
+        MfgNews = new ReleaseNewsViewModel(Component.MfgUnlock, "MFG Unlock", settings);
+        StreamlineNews = new ReleaseNewsViewModel(Component.Streamline, "Streamline", settings);
+        ReShadeNews = new ReleaseNewsViewModel(Component.ReShade, "ReShade", settings);
 
         GamesView = CollectionViewSource.GetDefaultView(Games);
         GamesView.Filter = o => o is GameViewModel g && Matches(g);
@@ -47,6 +53,11 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<GameViewModel> Games { get; } = [];
     public ICollectionView GamesView { get; }
     public ObservableCollection<string> LogLines { get; } = [];
+    public ReleaseNewsViewModel OptiNews { get; }
+    public ReleaseNewsViewModel DlssNews { get; }
+    public ReleaseNewsViewModel MfgNews { get; }
+    public ReleaseNewsViewModel StreamlineNews { get; }
+    public ReleaseNewsViewModel ReShadeNews { get; }
 
     internal const int MaxLogLines = 400;
 
@@ -187,6 +198,8 @@ public sealed partial class MainViewModel : ObservableObject
         ReShadeText = rsPath is not null ? FileUtil.Format(FileUtil.ReadVersion(rsPath)) + (auto ? " · auto" : "")
             : auto && store.ReShade is { } r ? $"{r.Tag} · auto"
             : auto ? "auto" : "missing";
+        // An imported ReShade doesn't follow releases, so there is nothing new to point at.
+        ReShadeNews.Load(auto ? store.ReShade : null);
         foreach (var g in Games) g.RefreshStatus();
         CountUpdates();
     }
@@ -208,6 +221,10 @@ public sealed partial class MainViewModel : ObservableObject
         DlssVersion = s.Dlss?.Tag.TrimStart('v') ?? "—";
         MfgVersion = s.Mfg?.Tag ?? (File.Exists(Path.Combine(AppPaths.Components, ComponentStore.MfgFile)) ? "local" : "—");
         StreamlineVersion = s.Streamline?.Tag.TrimStart('v') ?? "—";
+        OptiNews.Load(s.Opti);
+        DlssNews.Load(s.Dlss);
+        MfgNews.Load(s.Mfg);
+        StreamlineNews.Load(s.Streamline);
         foreach (var g in Games)
         {
             g.RebuildDlssChoices();
@@ -387,10 +404,11 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private static void OpenUrl(string url)
+    internal static void OpenUrl(string url)
     {
-        if (url.StartsWith("https://", StringComparison.Ordinal))
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        if (!url.StartsWith("https://", StringComparison.Ordinal)) return;
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Win32Exception ex) { Log.Error($"Could not open {url}", ex); }
     }
 
     [RelayCommand]

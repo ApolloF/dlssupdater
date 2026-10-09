@@ -78,9 +78,9 @@ public class InstallerTests : IDisposable
         _store.Dlss = r;
     }
 
-    private Dictionary<string, string> Snapshot() =>
-        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
-            .ToDictionary(f => Path.GetRelativePath(_root, f), File.ReadAllText, StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> Snapshot(string? dir = null) =>
+        Directory.EnumerateFiles(dir ?? _root, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => Path.GetRelativePath(dir ?? _root, f), File.ReadAllText, StringComparer.OrdinalIgnoreCase);
 
     private GameInfo Game() => GameScanner.Inspect(new GameEntry("Game", _root, "Manual"));
 
@@ -506,5 +506,458 @@ public class InstallerTests : IDisposable
         Assert.False(Installer.IsReShade(plain));
         Assert.False(Installer.IsOptiScaler(missing));
         Assert.False(Installer.IsReShade(missing));
+    }
+
+    // ---------- review 2026-10: crafted, moved or broken install records ----------
+
+    private string Engine(string file) => Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64", file);
+
+    /// <summary>A folder next to the game that no install record may reach.</summary>
+    private string Victim()
+    {
+        var v = Path.Combine(_tmp, "Victim");
+        Write(Path.Combine(v, "keep.txt"), "precious");
+        return v;
+    }
+
+    private void EditManifest(Action<InstallManifest> edit)
+    {
+        var m = InstallManifest.Read(_target)!;
+        edit(m);
+        m.Save(_target);
+    }
+
+    private IEnumerable<string> BackupContents() =>
+        Directory.EnumerateFiles(InstallManifest.BackupDirFor(_target), "*", SearchOption.AllDirectories).Select(File.ReadAllText);
+
+    private static void Junction(string link, string target)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        p.WaitForExit();
+        Assert.Equal(0, p.ExitCode);
+    }
+
+    [Theory]
+    [InlineData("dir-up")]
+    [InlineData("dir-absolute")]
+    [InlineData("dir-outside-install-folder")]
+    [InlineData("root-up")]
+    [InlineData("file-up")]
+    [InlineData("backup-original-up")]
+    [InlineData("backup-escapes-backup-folder")]
+    [InlineData("backup-absolute")]
+    [InlineData("file-absolute")]
+    [InlineData("file-install-tag-up")]
+    [InlineData("root-absolute")]
+    [InlineData("file-unc-outside")]
+    public async Task CraftedManifest_UninstallRefuses_AndTouchesNothingOutside(string attack)
+    {
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        Write(Path.Combine(InstallManifest.BackupDirFor(_target), "evil.dll"), "EVIL");
+        EditManifest(m =>
+        {
+            switch (attack)
+            {
+                case "dir-up": m.Dirs.Add(@"..\Victim"); break;
+                case "dir-absolute": m.Dirs.Add(victim); break;
+                case "dir-outside-install-folder": m.Dirs.Add("Engine"); break;
+                case "root-up": m.RootRel = @"..\..\..\.."; m.Dirs.Add("Victim"); break;
+                case "file-up": m.Files.Add(@"..\Victim\keep.txt"); break;
+                case "backup-original-up": m.Backups.Add(new BackupEntry { Original = @"..\Victim\evil.dll", Backup = "evil.dll" }); break;
+                case "backup-escapes-backup-folder": m.Backups.Add(new BackupEntry { Original = "Game.exe", Backup = @"..\..\..\..\..\..\Victim\keep.txt" }); break;
+                case "backup-absolute": m.Backups.Add(new BackupEntry { Original = "Game.exe", Backup = Path.Combine(victim, "keep.txt") }); break;
+                case "file-absolute": m.Files.Add(Path.Combine(victim, "keep.txt")); break;
+                case "file-install-tag-up": m.Files.Add(InstallManifest.InstallTag + @"\..\..\..\..\Victim\keep.txt"); break;
+                case "root-absolute": m.RootRel = _tmp; m.Dirs.Add("Victim"); break;
+                case "file-unc-outside": m.Files.Add(Unc(Path.Combine(victim, "keep.txt")) ?? Path.Combine(victim, "keep.txt")); break;
+            }
+        });
+        var before = Snapshot();
+
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.UninstallAsync(Game(), _target, default));
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.RestoreDlssAsync(Game(), _target, default));
+
+        Assert.Equal(["keep.txt"], Directory.EnumerateFiles(victim).Select(Path.GetFileName));
+        Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task CraftedManifest_LaunchStyleReinstall_RefusesProxyOutsideTheGame()
+    {
+        // Seaglass's beforeLaunch reinstalls from the record: its proxy and files must not reach outside either.
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        EditManifest(m =>
+        {
+            m.Proxy = @"..\..\..\..\Victim\keep.txt";
+            m.Files.Add(@"..\Victim\keep.txt");
+        });
+
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.InstallAsync(Game(), _target, ReShadeOnly(), null, default));
+        Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            installer.InstallAsync(Game(), _target, new InstallOptions { Opti = true, Proxy = @"..\..\evil.dll" }, null, default));
+    }
+
+    [Fact]
+    public async Task ManifestPathThroughJunction_IsRefused()
+    {
+        var victim = Victim();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        var link = Path.Combine(_target, "Link");
+        Junction(link, victim);
+        try
+        {
+            EditManifest(m => m.Files.Add(@"Game\Binaries\Win64\Link\keep.txt"));
+
+            await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.UninstallAsync(Game(), _target, default));
+            Assert.Equal("precious", File.ReadAllText(Path.Combine(victim, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(link); // removes the junction only; a recursive delete of the temp folder can't
+        }
+    }
+
+    [Fact]
+    public async Task SameFolderFromNarrowerRoot_IsRefused_OriginalsStayRestorable()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+
+        // "Add game folder" picked Game\Game: the SR backup at Game\Engine is out of its reach.
+        var inner = GameScanner.Inspect(new GameEntry("Game", Path.Combine(_root, "Game"), "Manual"));
+        await Assert.ThrowsAsync<UnsafeManifestException>(() => installer.InstallAsync(inner, _target, new InstallOptions { Dlss = true }, null, default));
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+    }
+
+    [Fact]
+    public async Task SameFolderFromWiderRoot_RebasesRecord_RestoreReturnsOriginals()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        var inner = GameScanner.Inspect(new GameEntry("Game", Path.Combine(_root, "Game"), "Manual"));
+        await installer.InstallAsync(inner, _target, new InstallOptions { Dlss = true }, null, default);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+    }
+
+    [Fact]
+    public async Task UnreadableManifest_InstallRefuses_BackupsSurvive()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.WriteAllText(InstallManifest.PathFor(_target), "{ truncated");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default));
+        Assert.Contains("OLD-FG", BackupContents());
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+        Assert.Null(InstallManifest.Load(_target)); // display code still just sees "not installed"
+    }
+
+    [Fact]
+    public async Task LostManifest_NewInstallNeverOverwritesSavedOriginals()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.Delete(InstallManifest.PathFor(_target));
+
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        Assert.Contains("OLD-FG", BackupContents());
+        Assert.Contains("OLD-SR", BackupContents());
+    }
+
+    [Fact]
+    public async Task LaunchReinstall_KeepsInstalledOptiAndMfgVersions()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        SeedOpti("v10.0.0", "OPTI-2");
+        SeedMfg("2.0", "MFG-2");
+
+        var m = InstallManifest.Read(_target)!;
+        await installer.InstallAsync(Game(), _target, Full.KeepingInstalledVersions(m), null, default);
+        Assert.Equal("OPTI-1", T("dxgi.dll"));
+        Assert.Equal("MFG-1", T(ComponentStore.MfgFile));
+        Assert.Equal("v9.9.9", InstallManifest.Read(_target)!.OptiTag);
+        Assert.Equal("1.0", InstallManifest.Read(_target)!.MfgTag);
+
+        // The installed release left the cache: OptiScaler is left alone rather than upgraded.
+        Directory.Delete(ComponentStore.TagDir(Component.OptiScaler, "v9.9.9"), true);
+        var o = Full.KeepingInstalledVersions(InstallManifest.Read(_target)!);
+        Assert.False(o.Opti);
+        Assert.True(o.Mfg);
+        await installer.InstallAsync(Game(), _target, o, null, default);
+        Assert.Equal("OPTI-1", T("dxgi.dll"));
+
+        // A click in DLSS Updater (no pin) moves to the newest release.
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+        Assert.Equal("OPTI-2", T("dxgi.dll"));
+        Assert.Equal("MFG-2", T(ComponentStore.MfgFile));
+    }
+
+    [Fact]
+    public async Task RestoreDlss_KeepsAFileTheGameUpdatedSince()
+    {
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, new InstallOptions { Dlss = true }, null, default);
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "GAME-PATCH-3.8");
+
+        await installer.RestoreDlssAsync(Game(), _target, default);
+        Assert.Equal("GAME-PATCH-3.8", T("nvngx_dlssg.dll"));
+        Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+    }
+
+    /// <summary>An install folder the user picked outside the game (the folder dialog allows any folder).</summary>
+    private string Elsewhere()
+    {
+        var dir = Path.Combine(_tmp, "Elsewhere");
+        Write(Path.Combine(dir, "dxgi.dll"), "ELSEWHERE-MOD");
+        return dir;
+    }
+
+    [Fact]
+    public async Task InstallFolderOutsideGame_InstallUpdateUninstall_RoundTrip()
+    {
+        var elsewhere = Elsewhere();
+        var before = Snapshot();
+        var beforeElsewhere = Snapshot(elsewhere);
+        var installer = new Installer(_store);
+
+        await installer.InstallAsync(Game(), elsewhere, Full, null, default);
+        Assert.Equal("OPTI-1", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.Equal("MFG-1", File.ReadAllText(Path.Combine(elsewhere, ComponentStore.MfgFile)));
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+
+        SeedOpti("v10.0.0", "OPTI-2");
+        await installer.InstallAsync(Game(), elsewhere, Full, null, default);
+        Assert.Equal("OPTI-2", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+
+        await installer.UninstallAsync(Game(), elsewhere, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+        Assert.Equal(beforeElsewhere.OrderBy(k => k.Key), Snapshot(elsewhere).OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(elsewhere)));
+    }
+
+    [Fact]
+    public async Task InstallFolderOutsideGame_RecordWrittenByEarlierVersion_StillUninstalls()
+    {
+        // The record 1.5.1 writes for such a folder: game root and our files reached through "..".
+        var elsewhere = Elsewhere();
+        var savedMod = Path.Combine(InstallManifest.BackupDirFor(elsewhere), @"_up\Elsewhere\dxgi.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(savedMod)!);
+        File.Move(Path.Combine(elsewhere, "dxgi.dll"), savedMod);
+        Write(Path.Combine(elsewhere, "dxgi.dll"), "OPTI-1");
+        Write(Path.Combine(elsewhere, @"OptiScaler\libxess.dll"), "XESS");
+        Write(Path.Combine(InstallManifest.BackupDirFor(elsewhere), @"Game\Binaries\Win64\nvngx_dlssg.dll"), "OLD-FG");
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "NEW-nvngx_dlssg.dll");
+        File.WriteAllText(InstallManifest.PathFor(elsewhere), """
+            {
+              "Schema": 1,
+              "RootRel": "..\\Game",
+              "Proxy": "dxgi.dll",
+              "Mode": "OptiScaler",
+              "Opti": true,
+              "Dlss": true,
+              "Files": [ "..\\Elsewhere\\dxgi.dll" ],
+              "Dirs": [ "..\\Elsewhere\\OptiScaler" ],
+              "Backups": [
+                { "Original": "..\\Elsewhere\\dxgi.dll", "Backup": "_up\\Elsewhere\\dxgi.dll", "Kind": "file" },
+                { "Original": "Game\\Binaries\\Win64\\nvngx_dlssg.dll", "Backup": "Game\\Binaries\\Win64\\nvngx_dlssg.dll", "Kind": "dlss" }
+              ]
+            }
+            """);
+
+        var m = InstallManifest.Read(elsewhere)!;
+        m.Contain(elsewhere, _root);
+        Assert.Equal([@"|install|\dxgi.dll"], m.Files);
+        Assert.Equal([@"|install|\OptiScaler"], m.Dirs);
+        Assert.NotNull(m.BackupOf(@"|install|\dxgi.dll"));
+
+        await new Installer(_store).UninstallAsync(Game(), elsewhere, default);
+        Assert.Equal("ELSEWHERE-MOD", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.False(Directory.Exists(Path.Combine(elsewhere, "OptiScaler")));
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(elsewhere)));
+    }
+
+    /// <summary>The same path through the admin share (\\localhost\C$\…), or null where that share isn't reachable.</summary>
+    private static string? Unc(string local)
+    {
+        var share = $@"\\localhost\{local[0]}$";
+        return Directory.Exists(share + @"\") ? share + local[2..] : null;
+    }
+
+    /// <summary>A drive letter mapped onto a folder with subst: to path handling, another volume.</summary>
+    private sealed class Subst : IDisposable
+    {
+        public string? Drive { get; }
+
+        public Subst(string dir)
+        {
+            var used = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+            foreach (var letter in "RSTUVWXYZ".Where(l => !used.Contains(l)))
+                if (Run($"{letter}: \"{dir}\"") == 0) { Drive = $@"{letter}:\"; return; }
+        }
+
+        private static int Run(string args)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("subst.exe", args)
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            p.WaitForExit();
+            return p.ExitCode;
+        }
+
+        public void Dispose()
+        {
+            if (Drive is not null) Run($"{Drive[..2]} /d");
+        }
+    }
+
+    /// <summary>The install folder <paramref name="local"/> as reached on another volume than the game, or null where this machine can't.</summary>
+    private string? OnOtherVolume(string how, string local, Subst? subst) => how switch
+    {
+        "subst" => subst?.Drive is { } d ? Path.Combine(d, Path.GetRelativePath(_tmp, local)) : null,
+        _ => Unc(local),
+    };
+
+    [Theory]
+    [InlineData("subst")]
+    [InlineData("unc")]
+    public async Task InstallFolderOnAnotherVolume_InstallUpdateRestoreUninstall_RoundTrip(string how)
+    {
+        var elsewhere = Elsewhere();
+        using var subst = how == "subst" ? new Subst(_tmp) : null;
+        var via = OnOtherVolume(how, elsewhere, subst);
+        if (via is null) return; // no free drive letter or admin share here
+        var before = Snapshot();
+        var beforeElsewhere = Snapshot(elsewhere);
+        var installer = new Installer(_store);
+
+        await installer.InstallAsync(Game(), via, Full, null, default);
+        Assert.Equal("OPTI-1", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.Equal("NEW-nvngx_dlssg.dll", T("nvngx_dlssg.dll"));
+        Assert.False(File.Exists(Path.Combine(elsewhere, "dxgi.dll.1")));
+        var m = InstallManifest.Read(via)!;
+        Assert.Contains(@"|install|\dxgi.dll", m.Files);
+        Assert.All(m.Files.Concat(m.Dirs).Concat(m.Backups.SelectMany(b => new[] { b.Original, b.Backup })),
+            e => Assert.False(Path.IsPathRooted(e), e));
+
+        SeedOpti("v10.0.0", "OPTI-2");
+        await installer.InstallAsync(Game(), via, Full, null, default);
+        Assert.Equal("OPTI-2", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+
+        await installer.RestoreDlssAsync(Game(), via, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.Equal("OLD-SR", File.ReadAllText(Engine("nvngx_dlss.dll")));
+
+        await installer.UninstallAsync(Game(), via, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+        Assert.Equal(beforeElsewhere.OrderBy(k => k.Key), Snapshot(elsewhere).OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(elsewhere)));
+    }
+
+    [Theory]
+    [InlineData("subst")]
+    [InlineData("unc")]
+    public async Task InstallFolderOnAnotherVolume_RecordWrittenBy0ed78f7_RestoresDisplacedOriginal(string how)
+    {
+        // 0ed78f7 recorded full paths for such a folder and left the displaced dxgi.dll beside itself as dxgi.dll.1.
+        var elsewhere = Elsewhere();
+        using var subst = how == "subst" ? new Subst(_tmp) : null;
+        var via = OnOtherVolume(how, elsewhere, subst);
+        if (via is null) return;
+        var proxy = Path.Combine(via, "dxgi.dll");
+        File.Move(Path.Combine(elsewhere, "dxgi.dll"), Path.Combine(elsewhere, "dxgi.dll.1"));
+        Write(Path.Combine(elsewhere, "dxgi.dll"), "OPTI-1");
+        Write(Path.Combine(elsewhere, @"OptiScaler\libxess.dll"), "XESS");
+        Write(Path.Combine(InstallManifest.BackupDirFor(elsewhere), @"Game\Binaries\Win64\nvngx_dlssg.dll"), "OLD-FG");
+        File.WriteAllText(Path.Combine(_target, "nvngx_dlssg.dll"), "NEW-nvngx_dlssg.dll");
+        new InstallManifest
+        {
+            RootRel = _root, Proxy = "dxgi.dll", Mode = InstallMode.OptiScaler, Opti = true, Dlss = true,
+            Files = [proxy],
+            Dirs = [Path.Combine(via, "OptiScaler")],
+            Backups =
+            [
+                new BackupEntry { Original = proxy, Backup = proxy + ".1", Kind = "file" },
+                new BackupEntry { Original = @"Game\Binaries\Win64\nvngx_dlssg.dll", Backup = @"Game\Binaries\Win64\nvngx_dlssg.dll", Kind = "dlss" },
+            ],
+        }.Save(via);
+        var installer = new Installer(_store);
+
+        await installer.RestoreDlssAsync(Game(), via, default);
+        Assert.Equal("OLD-FG", T("nvngx_dlssg.dll"));
+        Assert.Equal([@"|install|\dxgi.dll"], InstallManifest.Read(via)!.Files);
+
+        await installer.UninstallAsync(Game(), via, default);
+        Assert.Equal("ELSEWHERE-MOD", File.ReadAllText(Path.Combine(elsewhere, "dxgi.dll")));
+        Assert.Equal(["dxgi.dll"], Directory.EnumerateFileSystemEntries(elsewhere).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void ManifestEntries_RoundTripForEveryKindOfInstallFolder()
+    {
+        var inGame = Path.Combine(_target, "dxgi.dll");
+        Assert.Equal(@"Game\Binaries\Win64\dxgi.dll", InstallManifest.Entry(inGame, _target, _root));
+        foreach (var target in new[] { @"D:\Mods", @"\\nas\games\Mods", Path.Combine(_tmp, "Elsewhere") })
+        {
+            var file = Path.Combine(target, @"OptiScaler\libxess.dll");
+            var entry = InstallManifest.Entry(file, target, _root);
+            Assert.Equal(@"|install|\OptiScaler\libxess.dll", entry);
+            Assert.Equal(file, InstallManifest.Resolve(entry, target, _root));
+        }
+        Assert.Throws<UnsafeManifestException>(() => InstallManifest.Entry(@"E:\Other\x.dll", @"D:\Mods", _root));
+        foreach (var bad in new[] { @"|install|", @"|install|\", @"|install|\C:\x.dll", @"\\?\C:\x.dll", @"C:\x.dll:stream", "x.dll:stream", @"\x.dll" })
+            Assert.Throws<UnsafeManifestException>(() => InstallManifest.Resolve(bad, @"D:\Mods", _root));
+    }
+
+    [Fact]
+    public async Task Uninstall_FailsPartWay_RetryKeepsOriginalsAlreadyRestored()
+    {
+        var before = Snapshot();
+        var installer = new Installer(_store);
+        await installer.InstallAsync(Game(), _target, Full, null, default);
+
+        // The game's SR dll is held open: its restore fails after dxgi.dll's original is already back.
+        using (new FileStream(Engine("nvngx_dlss.dll"), FileMode.Open, FileAccess.Read, FileShare.Read))
+            await Assert.ThrowsAnyAsync<Exception>(() => installer.UninstallAsync(Game(), _target, default));
+        Assert.Equal("OTHER-MOD", T("dxgi.dll"));
+
+        await installer.UninstallAsync(Game(), _target, default);
+        Assert.Equal(before.OrderBy(k => k.Key), Snapshot().OrderBy(k => k.Key));
+        Assert.False(Directory.Exists(InstallManifest.DirFor(_target)));
+    }
+
+    [Fact]
+    public void GitHubToken_IsSavedEncrypted_AndPlainTextIsMigrated()
+    {
+        const string token = "github_pat_TEST_ONLY_not_a_real_token";
+        new AppSettings { GitHubToken = token }.Save();
+        Assert.DoesNotContain(token, File.ReadAllText(AppPaths.SettingsFile));
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
+
+        // settings.json from 1.5.1: the plain token is read, then rewritten encrypted.
+        File.WriteAllText(AppPaths.SettingsFile, $"{{ \"GitHubToken\": \"{token}\" }}");
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
+        Assert.DoesNotContain(token, File.ReadAllText(AppPaths.SettingsFile));
+        Assert.Equal(token, AppSettings.Load().GitHubToken);
     }
 }

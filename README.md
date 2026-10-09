@@ -12,6 +12,10 @@ It pulls the latest releases of:
 
 and installs them next to each game's executable, together with your own `nvngx_dlssnr.dll`.
 
+> **Single-player games only.** Replacing or injecting DLLs can trigger anti-cheat in online games. DLSS Updater flags games with known anti-cheat (EAC, BattlEye, GameGuard, …) and asks before touching them, but no check is complete. For online games, use the DLSS override in the NVIDIA app instead.
+>
+> Not affiliated with or endorsed by NVIDIA. NVIDIA and DLSS are trademarks of NVIDIA Corporation, used here only to describe compatibility. Everything is downloaded from the official sources listed above; nothing from NVIDIA is bundled.
+
 ## Download
 
 Each [release](https://github.com/ApolloF/dlssupdater/releases/latest) has two builds of the same app:
@@ -45,6 +49,8 @@ Settings has key-capture fields for the OptiScaler hotkeys (menu, FPS overlay, f
 
 **NVIDIA profile** (per game only; the global driver profile is read, never written): DLSS SR / RR / FG preset overrides, DLSS render resolution, multi frame generation count, Smooth Motion, RTX HDR, RTX Dynamic Vibrance, FPS limiter, VSync and power mode, written straight to the driver profile via NvAPI like NVIDIA Profile Inspector. Nothing is loaded until the tab is opened. The scan detects which DLSS features a game ships (SR, RR, FG, Reflex, from `nvngx_*` and Streamline `sl.*` files); the tab lists them, moves presets for missing features into a collapsed group, and suggests Smooth Motion for games without FG. The game list shows RR / FG / Reflex badges.
 
+**What's new**: when a component has a newer release than the last one you looked at, its version in the header gets a green dot. Click any version for a short summary of that release (headline and first points of its notes) and a link to the full release notes; closing it clears the dot. Nothing is flagged on the first check, only releases that arrive later.
+
 **Update all** re-applies everything to each managed game after a new release or after a game patch reverts the DLLs.
 
 Games are discovered from Steam, Epic, GOG, EA, Ubisoft and `XboxGames` folders. Standalone games can be added one by one or as a library folder whose subfolders are games.
@@ -69,6 +75,10 @@ To connect them, use *Settings → General → Connect to Seaglass*, or run `DLS
 
 Seaglass runs `DLSSUpdater.exe --addon`, which has no window and speaks JSON-RPC on stdin/stdout ([protocol](https://github.com/ApolloF/Seaglass/blob/feature/dlss-addon/docs/addon-protocol.md)). It never runs elevated. Games with anti-cheat that you haven't confirmed in DLSS Updater are left alone.
 
+## Support
+
+DLSS Updater is free. If it's useful to you, [sponsor it on GitHub](https://github.com/sponsors/ApolloF) or leave a one-off tip on [Ko-fi](https://ko-fi.com/apollof).
+
 ## Build
 
 ```
@@ -85,3 +95,7 @@ iscc /DAppVersion=1.5.1 installer\DLSSUpdater.iss
 Tagging `v*` (matching `<Version>` in the csproj) builds both on GitHub Actions and attaches them to a release.
 
 `DLSSU_INTEGRATION=1` enables a test that downloads the real releases (including ReShade from reshade.me) and installs them into a temporary folder.
+
+## License
+
+DLSS Updater is released under the [MIT License](LICENSE). The third-party files it downloads and installs (OptiScaler, MFG Unlock, NVIDIA DLSS and Streamline, ReShade) and your own `nvngx_dlssnr.dll` keep their own licences.
