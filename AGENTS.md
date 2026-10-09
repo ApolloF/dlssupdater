@@ -10,7 +10,7 @@ Windows desktop app that pulls the latest OptiScaler-NR, DLSS, MFG Unlock, Strea
 - Installer: Inno Setup 6 (`installer/DLSSUpdater.iss`)
 
 ## Commands
-- Build (CI gate): `dotnet build -warnaserror`
+- Build (warnings are errors): `dotnet build -warnaserror`
 - Test: `dotnet test` (needs the .NET 8 runtime and Windows Desktop runtime installed, not just a newer SDK)
 - Integration test (downloads real releases, off by default): `$env:DLSSU_INTEGRATION=1; dotnet test`. `DLSSU_COMPONENTS` can point at a folder that holds `nvngx_dlssnr.dll`.
 - Publish the portable single-file exe: `dotnet publish src/DLSSUpdater -c Release -o publish` → `publish\DLSSUpdater.exe`
@@ -19,7 +19,7 @@ Windows desktop app that pulls the latest OptiScaler-NR, DLSS, MFG Unlock, Strea
 ## Release flow
 1. Bump `<Version>` in `src/DLSSUpdater/DLSSUpdater.csproj`, and the version in the `iscc` example lines of `installer/DLSSUpdater.iss` and `README.md`. All three must say the same thing.
 2. Commit, then tag `v<version>` (for example `v1.5.1`) and push the tag.
-3. `.github/workflows/release.yml` checks that the tag equals `v` + the csproj version and fails the build if it doesn't. It then runs the tests, publishes, builds the installer and attaches both exes to the GitHub release.
+3. `.github/workflows/release.yml` (runs on `v*` tags only; PRs and pushes are covered by `ci.yml`) checks that the tag equals `v` + the csproj version and fails the build if it doesn't. It then runs the tests, publishes, builds the installer and attaches both exes to the GitHub release.
 
 ## Layout
 - `src/DLSSUpdater/Core`: business logic with no UI: GitHub client (ETag cache), component store, installer, ini merging, NVIDIA driver profiles (`NvDrs`), settings
@@ -40,5 +40,20 @@ Windows desktop app that pulls the latest OptiScaler-NR, DLSS, MFG Unlock, Strea
 - **`nvngx_dlssnr.dll` must never be committed, bundled, uploaded or redistributed** (NVIDIA's terms don't allow it). The user supplies it, and it stays in `%LocalAppData%\DLSSUpdater\components`. `.gitignore` blocks `*.dll`, `*.exe`, `*.addon64` and `*.zip`. Don't force-add binaries.
 - Tests and agents must not write NVIDIA driver profiles (`NvDrs` / NvAPI `Save`), launch real games or install into real game folders. Use temp directories.
 
+## Check command
+`dotnet build -warnaserror && dotnet test`
+Takes about 40 seconds. `.github/workflows/ci.yml` (job `build-test`, windows-latest) runs this same pair on every pull request and push to main. Keep it fast and keep it passing.
+
 ## Definition of done
-`dotnet build -warnaserror` and `dotnet test` pass with no new warnings. UI changes are checked in the running app.
+- The check command passes, with no new warnings.
+- Tests were added or updated for changed behaviour.
+- UI changes are checked in the running app.
+
+## Git workflow
+- Remote: GitHub ApolloF/dlssupdater.
+- Branch, PR, CI (`build-test`), then merge only when the user says "ship it" (auto-merge, squash).
+- Releases: tag `v<version>` as described in "Release flow"; `release.yml` publishes.
+
+## Secrets
+- No config or secrets in the repo; the app keeps its data in `%LocalAppData%\DLSSUpdater`. If a key is ever needed it comes from env vars, and `.env.example` lists the keys with no values.
+- Never commit real values. gitleaks runs on every commit.
