@@ -11,3 +11,10 @@ TestResults/
 *.exe
 *.zip
 /OptiScaler.ini
+
+# Secrets (safety baseline)
+.env
+.env.*
+!.env.example
+*.token
+*.pem

@@ -495,6 +495,19 @@ public class InstallerTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => new Installer(_store).InstallAsync(Game(), _target, o, null, default));
     }
 
+    [Fact]
+    public void ProxyChecks_FalseForPlainAndMissingFiles()
+    {
+        var plain = Path.Combine(_tmp, "dxgi.dll");
+        File.WriteAllText(plain, "not a PE file");
+        var missing = Path.Combine(_tmp, "winmm.dll");
+
+        Assert.False(Installer.IsOptiScaler(plain));
+        Assert.False(Installer.IsReShade(plain));
+        Assert.False(Installer.IsOptiScaler(missing));
+        Assert.False(Installer.IsReShade(missing));
+    }
+
     // ---------- review 2026-10: crafted, moved or broken install records ----------
 
     private string Engine(string file) => Path.Combine(_root, @"Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64", file);
